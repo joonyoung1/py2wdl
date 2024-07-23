@@ -1,21 +1,23 @@
 from __future__ import annotations
 import inspect
 from textwrap import dedent
-from typing import Callable, Any, Dict
+from typing import Optional, Callable, Any
 
 
 class Task:
     def __init__(
         self,
         func: Callable[..., Any],
-        input_type: str | None = None,
-        output_type: str | None = None,
-        meta: Dict[str, Any] | None = None,
+        name: str,
+        input_type: Optional[str] = None,
+        output_type: Optional[str] = None,
+        meta: Optional[dict[str, Any]] = None,
     ) -> None:
-        self.func = func
+        self.func: Callable[..., Any] = func
+        self.name: str = name
         self.input_type = input_type
         self.output_type = output_type
-        self.meta = meta
+        self.meta: Optional[dict[str, Any]] = meta
 
     def execute(self, *args: Any, **kwargs: Any) -> Any:
         return self.func(*args, **kwargs)
@@ -26,18 +28,22 @@ class Task:
         func_source = dedent(inspect.getsource(self.func)).strip()
 
         return (
-            f"Metadata: ({meta_str})\n" if self.meta else ""
-        ) + f"Function Source:\n{func_source}"
+            f"Name: {self.name}\n"
+            + (f"Metadata: ({meta_str})\n" if self.meta else "")
+            + f"Function Source:\n{func_source}"
+        )
 
 
 def task(
-    input_type: str | None = None,
-    output_type: str | None = None,
-    meta: Dict[str, Any] | None = None,
-):
-    def task_factory(func):
+    name: Optional[str] = None,
+    input_type: Optional[str] = None,
+    output_type: Optional[str] = None,
+    meta: Optional[dict[str, Any]] = None,
+) -> Callable[..., Any]:
+    def task_factory(func: Callable[..., Any]) -> Task:
         return Task(
             func=func,
+            name=name if name else func.__name__,
             input_type=input_type,
             output_type=output_type,
             meta=meta,
