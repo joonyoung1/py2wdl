@@ -1,7 +1,8 @@
 from __future__ import annotations
 import inspect
 from textwrap import dedent
-from typing import Optional, Callable, Any
+from typing import Optional, Callable, Iterable, Type, Any
+from wdl_types import WDLType, Boolean, Int, String, File
 
 
 class Task:
@@ -9,15 +10,22 @@ class Task:
         self,
         func: Callable[..., Any],
         name: str,
-        input_type: Optional[str] = None,
-        output_type: Optional[str] = None,
+        input_types: Optional[Iterable[Type[WDLType]]] = None,
+        output_types: Optional[Iterable[Type[WDLType]]] = None,
         meta: Optional[dict[str, Any]] = None,
     ) -> None:
         self.func: Callable[..., Any] = func
         self.name: str = name
-        self.input_type = input_type
-        self.output_type = output_type
+        self.input_types = input_types
+        self.output_types = output_types
         self.meta: Optional[dict[str, Any]] = meta
+
+    def __call__(self, *args: Any) -> Any:
+        for i, (received, expected) in enumerate(zip(args, self.input_types)):
+            if not isinstance(received, expected):
+                raise TypeError(
+                    f"Expected type {expected} on parameter {i}, but got {type(received)}"
+                )
 
     def execute(self, *args: Any, **kwargs: Any) -> Any:
         return self.func(*args, **kwargs)
@@ -36,16 +44,16 @@ class Task:
 
 def task(
     name: Optional[str] = None,
-    input_type: Optional[str] = None,
-    output_type: Optional[str] = None,
+    input_types: Optional[Iterable[Type[WDLType]]] = None,
+    output_types: Optional[Iterable[Type[WDLType]]] = None,
     meta: Optional[dict[str, Any]] = None,
 ) -> Callable[..., Any]:
     def task_factory(func: Callable[..., Any]) -> Task:
         return Task(
             func=func,
             name=name if name else func.__name__,
-            input_type=input_type,
-            output_type=output_type,
+            input_types=input_types,
+            output_types=output_types,
             meta=meta,
         )
 
@@ -54,9 +62,17 @@ def task(
 
 if __name__ == "__main__":
 
-    @task(meta={"name": "adding_task"})
-    def adder(a: int, b: int) -> None:
+    @task(
+        name="adding_task",
+        input_types=(Int, Int),
+        output_types=(Int),
+        meta={"description": "simple adding task"},
+    )
+    def adder(a: int, b: int) -> int:
         return a + b
 
     print(adder)
-    print(adder.execute(3, 5))
+
+    adder_input_a = File()
+    adder_input_b = Int()
+    adder(adder_input_a, adder_input_b)
