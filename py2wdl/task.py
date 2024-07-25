@@ -1,7 +1,7 @@
 from __future__ import annotations
 import inspect
 from textwrap import dedent
-from typing import Optional, Callable, Iterable, Type, Any
+from typing import Optional, Callable, Iterable, Type, Any, TypeVar, Generic
 
 
 class WDLValue:
@@ -11,9 +11,8 @@ class WDLValue:
         self.name: str = str(id(self))
         self.parent_task: Optional[Task] = parent_task
         self.output_idx: Optional[int] = output_idx
-
         self.child: list[tuple[Task, int]] = []
-    
+
     def add_child(self, child_task: Task, input_idx: int) -> None:
         self.child.append((child_task, input_idx))
 
@@ -55,6 +54,27 @@ class File(String): ...
 
 
 class Condition(String): ...
+
+
+T = TypeVar('T', Boolean, Int, String, File)
+
+
+class Array(WDLValue, Generic[T]):
+    def __init__(
+        self,
+        value: list[WDLValue] = [],
+        parent_task: Optional[Task] = None,
+        output_idx: Optional[int] = None,
+    ) -> None:
+        super().__init__(parent_task, output_idx)
+        self.value: Optional[list[WDLValue]] = value
+        self._type: Type[WDLValue] = T
+    
+    def __iter__(self) -> Iterable[WDLValue]:
+        return iter(self.value)
+
+    def get_element_type(self) -> Type[WDLValue]:
+        return self._type
 
 
 class Task:
