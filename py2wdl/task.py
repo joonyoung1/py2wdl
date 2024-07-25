@@ -10,13 +10,12 @@ class WDLValue:
     ) -> None:
         self.name: str = str(id(self))
         self.parent_task: Optional[Task] = parent_task
-        self.child_task: Optional[Task] = None
         self.output_idx: Optional[int] = output_idx
-        self.input_idx: Optional[int] = None
 
-    def set_input(self, child_task: Task, input_idx: int) -> None:
-        self.child_task = child_task
-        self.input_idx = input_idx
+        self.child: list[tuple[Task, int]] = []
+    
+    def add_child(self, child_task: Task, input_idx: int) -> None:
+        self.child.append((child_task, input_idx))
 
 
 class Boolean(WDLValue):
