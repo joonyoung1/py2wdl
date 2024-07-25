@@ -1,7 +1,9 @@
 from __future__ import annotations
 import inspect
 from textwrap import dedent
-from typing import Optional, Callable, Iterable, Type, Any, TypeVar, Generic
+from typing import Optional, Callable, Iterable, Union, Type, Any
+from typing import TypeVar, Generic
+from typing import get_origin, get_args
 
 
 class WDLValue:
@@ -56,25 +58,27 @@ class File(String): ...
 class Condition(String): ...
 
 
-T = TypeVar('T', Boolean, Int, String, File)
+T = TypeVar("T", bound=WDLValue)
 
 
 class Array(WDLValue, Generic[T]):
     def __init__(
         self,
-        value: list[WDLValue] = [],
+        element_type: Type[WDLValue],
+        value: list[Union[bool, int, str]] = [],
         parent_task: Optional[Task] = None,
         output_idx: Optional[int] = None,
     ) -> None:
         super().__init__(parent_task, output_idx)
-        self.value: Optional[list[WDLValue]] = value
-        self._type: Type[WDLValue] = T
-    
+        self.element_type: Type[WDLValue] = element_type
+        self.value: list[Union[bool, int, str]] = value
+        self.element = self.element_type(parent_task=parent_task, output_idx=output_idx)
+
     def __iter__(self) -> Iterable[WDLValue]:
-        return iter(self.value)
+        return iter([self.element])
 
     def get_element_type(self) -> Type[WDLValue]:
-        return self._type
+        return self.element_type
 
 
 class Task:
@@ -89,10 +93,21 @@ class Task:
         self.func: Callable[..., Any] = func
         self.name: str = name
         self.input_types = input_types
-        self.output_values = tuple(
-            t(parent_task=self, output_idx=i) for i, t in enumerate(output_types)
-        )
         self.meta: Optional[dict[str, Any]] = meta
+        self.outputs: list[WDLValue] = []
+        if output_types is not None:
+            self.setting_output_values(output_types)
+
+    def setting_output_values(self, output_types: Iterable[Type[WDLValue]]):
+        for i, output_type in enumerate(output_types):
+            if get_origin(output_type) is Array:
+                element_type = get_args(output_type)[0]
+                output = output_type(
+                    parent_task=self, output_idx=i, element_type=element_type
+                )
+            else:
+                output = output_type(parent_task=self, output_idx=i)
+            self.outputs.append(output)
 
     def __call__(self, *args: WDLValue) -> Any:
         for i, (arg, t) in enumerate(zip(args, self.input_types)):
@@ -101,12 +116,15 @@ class Task:
                     f"Expected type {t} on parameter {i}, but got {type(arg)}"
                 )
             else:
-                arg.set_input(self, i)
+                arg.add_child(self, i)
 
-        if len(self.output_values) > 1:
-            return self.output_values
+        output_length = len(self.outputs)
+        if output_length == 0:
+            return None
+        elif output_length == 1:
+            return self.outputs[0]
         else:
-            return self.output_values[0]
+            return self.outputs
 
     def execute(self, *args: Any, **kwargs: Any) -> Any:
         return self.func(*args, **kwargs)
@@ -144,18 +162,20 @@ def task(
 if __name__ == "__main__":
 
     @task(
-        name="adding_task",
-        input_types=(File, Int),
-        output_types=(Int,),
-        meta={"description": "simple adding task"},
+        input_types=(Int,),
+        output_types=(Array[Int],),
     )
-    def adder(a, b):
-        return a + b
+    def task_a(num: int):
+        my_array = [i for i in range(num)]
+        return my_array
 
-    print(adder)
+    @task(
+        input_types=(Int,),
+    )
+    def task_b(num: int):
+        print(num)
 
-    adder_input_a = File()
-    adder_input_b = Int()
-    adder_output = adder(adder_input_a, adder_input_b)
-
-    print(adder_output)
+    task_a_input = Int(value=10)
+    generated_array = task_a(task_a_input)
+    for num in generated_array:
+        task_b(num)
