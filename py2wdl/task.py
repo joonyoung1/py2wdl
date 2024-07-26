@@ -33,7 +33,7 @@ class Boolean(WDLValue):
 class Int(WDLValue):
     def __init__(
         self,
-        value: Optional[bool] = None,
+        value: Optional[int] = None,
         parent_task: Optional[Task] = None,
         output_idx: Optional[int] = None,
     ) -> None:
@@ -44,7 +44,7 @@ class Int(WDLValue):
 class String(WDLValue):
     def __init__(
         self,
-        value: Optional[bool] = None,
+        value: Optional[str] = None,
         parent_task: Optional[Task] = None,
         output_idx: Optional[int] = None,
     ) -> None:
@@ -86,9 +86,9 @@ class Task:
         self,
         func: Callable[..., Any],
         name: str,
-        input_types: Optional[Iterable[Type[WDLValue]]] = None,
-        output_types: Optional[Iterable[Type[WDLValue]]] = None,
-        meta: Optional[dict[str, Any]] = None,
+        input_types: Iterable[Type[WDLValue]] = (),
+        output_types: Iterable[Type[WDLValue]] = (),
+        meta: dict[str, Any] = {},
     ) -> None:
         self.func: Callable[..., Any] = func
         self.name: str = name
@@ -110,10 +110,15 @@ class Task:
             self.outputs.append(output)
 
     def __call__(self, *args: WDLValue) -> Any:
+        if len(args) != len(self.input_types):
+            raise TypeError(
+                f"Expected {len(self.input_types)} arguments but got {len(args)}"
+            )
+
         for i, (arg, t) in enumerate(zip(args, self.input_types)):
             if not isinstance(arg, t):
                 raise TypeError(
-                    f"Expected type {t} on parameter {i}, but got {type(arg)}"
+                    f"Expected type {t} on argument {i}, but got {type(arg)}."
                 )
             else:
                 arg.add_child(self, i)
@@ -143,9 +148,9 @@ class Task:
 
 def task(
     name: Optional[str] = None,
-    input_types: Optional[Iterable[Type[WDLValue]]] = None,
-    output_types: Optional[Iterable[Type[WDLValue]]] = None,
-    meta: Optional[dict[str, Any]] = None,
+    input_types: Iterable[Type[WDLValue]] = (),
+    output_types: Iterable[Type[WDLValue]] = (),
+    meta: dict[str, Any] = {},
 ) -> Callable[..., Any]:
     def task_factory(func: Callable[..., Any]) -> Task:
         return Task(
