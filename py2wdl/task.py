@@ -33,7 +33,7 @@ class Boolean(WDLValue):
 class Int(WDLValue):
     def __init__(
         self,
-        value: Optional[bool] = None,
+        value: Optional[int] = None,
         parent_task: Optional[Task] = None,
         output_idx: Optional[int] = None,
     ) -> None:
@@ -44,7 +44,7 @@ class Int(WDLValue):
 class String(WDLValue):
     def __init__(
         self,
-        value: Optional[bool] = None,
+        value: Optional[str] = None,
         parent_task: Optional[Task] = None,
         output_idx: Optional[int] = None,
     ) -> None:
