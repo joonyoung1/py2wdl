@@ -145,6 +145,9 @@ class Task:
             + f"Function Source:\n{func_source}"
         )
 
+    def __or__(self, other: Task):
+        other(*self.outputs)
+
 
 def task(
     name: Optional[str] = None,
@@ -180,7 +183,7 @@ if __name__ == "__main__":
     def task_b(num: int):
         print(num)
 
-    task_a_input = Int(value=10)
-    generated_array = task_a(task_a_input)
-    for num in generated_array:
-        task_b(num)
+    # task_a_input = Int(value=10)
+    # generated_array = task_a(task_a_input)
+    # for num in generated_array:
+    #     task_b(num)
