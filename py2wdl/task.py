@@ -98,7 +98,7 @@ class Task:
         if output_types is not None:
             self.setting_output_values(output_types)
 
-    def setting_output_values(self, output_types: Iterable[Type[WDLValue]]):
+    def setting_output_values(self, output_types: Iterable[Type[WDLValue]]) -> None:
         for i, output_type in enumerate(output_types):
             if get_origin(output_type) is Array:
                 element_type = get_args(output_type)[0]
@@ -108,8 +108,17 @@ class Task:
             else:
                 output = output_type(parent_task=self, output_idx=i)
             self.outputs.append(output)
+    
+    def get_outputs(self) -> Union[WDLValue, list[WDLValue]]:
+        output_length = len(self.outputs)
+        if output_length == 0:
+            return None
+        elif output_length == 1:
+            return self.outputs[0]
+        else:
+            return self.outputs
 
-    def __call__(self, *args: WDLValue) -> Any:
+    def __call__(self, *args: WDLValue) -> Union[WDLValue, list[WDLValue]]:
         if len(args) != len(self.input_types):
             raise TypeError(
                 f"Expected {len(self.input_types)} arguments but got {len(args)}"
@@ -123,13 +132,7 @@ class Task:
             else:
                 arg.add_child(self, i)
 
-        output_length = len(self.outputs)
-        if output_length == 0:
-            return None
-        elif output_length == 1:
-            return self.outputs[0]
-        else:
-            return self.outputs
+        return self.get_outputs()
 
     def execute(self, *args: Any, **kwargs: Any) -> Any:
         return self.func(*args, **kwargs)
