@@ -13,10 +13,10 @@ class WDLValue:
         self.name: str = str(id(self))
         self.parent_task: Optional[Task] = parent_task
         self.output_idx: Optional[int] = output_idx
-        self.child: list[tuple[Task, int]] = []
+        self.children: list[tuple[Task, int]] = []
 
     def add_child(self, child_task: Task, input_idx: int) -> None:
-        self.child.append((child_task, input_idx))
+        self.children.append((child_task, input_idx))
 
 
 class Boolean(WDLValue):
@@ -145,8 +145,19 @@ class Task:
             + f"Function Source:\n{func_source}"
         )
 
-    def __or__(self, other: Task):
-        other(*self.outputs)
+    def __or__(self, other_task: Task) -> Task:
+        if not isinstance(other_task, Task):
+            raise TypeError(f"Expected Task but got {type(other_task)}")
+        
+        other_task(*self.outputs)
+        return self
+    
+    def __ror__(self, values: list[WDLValue]) -> Task:
+        if not all(isinstance(value, WDLValue) for value in values):
+            raise TypeError(f"Expected list of WDLValue but got {type(values)}")
+        
+        self(*values)
+        return self
 
 
 def task(
@@ -183,7 +194,7 @@ if __name__ == "__main__":
     def task_b(num: int):
         print(num)
 
-    # task_a_input = Int(value=10)
-    # generated_array = task_a(task_a_input)
-    # for num in generated_array:
-    #     task_b(num)
+    task_a_input = Int(value=10)
+    generated_array = task_a(task_a_input)
+    for num in generated_array:
+        task_b(num)
