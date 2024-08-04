@@ -89,7 +89,7 @@ def test_pipeline_operation():
     assert child[1] == 0
 
 
-def test_pipeline_operation_with_fan_out():
+def test_pipeline_operation_with_fan_in_out():
     @task(output_types=(Int, Int))
     def parent_task():
         a = 1
@@ -107,16 +107,15 @@ def test_pipeline_operation_with_fan_out():
     @task(input_types=(Int, Int))
     def last_task(a, b):
         print(a, b)
-    
+
+    parent_task | [child_task_1, child_task_2] | last_task
+
     a, b = parent_task.get_outputs()
     assert a.parent_task == parent_task
     assert a.output_idx == 0
     assert b.parent_task == parent_task
     assert b.output_idx == 1
 
-    [a] | child_task_1
-    [b] | child_task_2
-    
     a_child = a.children[0]
     assert len(a.children) == 1
     assert a_child[0] == child_task_1
@@ -126,51 +125,6 @@ def test_pipeline_operation_with_fan_out():
     assert len(b.children) == 1
     assert b_child[0] == child_task_2
     assert b_child[1] == 0
-
-    a = child_task_1.get_outputs()
-    b = child_task_2.get_outputs()
-    assert a.parent_task == child_task_1
-    assert a.output_idx == 0
-    assert b.parent_task == child_task_2
-    assert b.output_idx == 0
-
-    [a, b] | last_task
-    a_child = a.children[0]
-    assert len(a.children) == 1
-    assert a_child[0] == last_task
-    assert a_child[1] == 0
-
-    b_child = b.children[0]
-    assert len(b.children) == 1
-    assert b_child[0] == last_task
-    assert b_child[1] == 1
-
-
-def test_pipeline_operation_with_fan_out():
-    @task(output_types=(Int, Int))
-    def parent_task():
-        a = 1
-        b = 2
-        return a, b
-
-    @task(input_types=(Int,), output_types=(Int,))
-    def child_task_1(a):
-        return a
-
-    @task(input_types=(Int,), output_types=(Int,))
-    def child_task_2(b):
-        return b
-
-    @task(input_types=(Int, Int))
-    def last_task(a, b):
-        print(a, b)
-    
-    a, b = parent_task.get_outputs()
-
-    [a] | child_task_1
-    [b] | child_task_2
-
-    [child_task_1, child_task_2] | last_task
 
     a = child_task_1.get_outputs()
     b = child_task_2.get_outputs()

@@ -149,21 +149,30 @@ class Task:
             + f"Function Source:\n{func_source}"
         )
 
-    def __or__(self, other: Task) -> Task:
-        if not isinstance(other, Task):
+    def __or__(self, other: Union[Task, list[Task]]) -> Task:
+        if isinstance(other, Task):
+            other(*self.outputs)
+            return other
+
+        elif all(isinstance(task, Task) for task in other):
+            i = 0
+            for task in other:
+                length = len(task.input_types)
+                task(*self.outputs[i : i + length])
+                i += length
+            return other
+
+        else:
             raise TypeError(f"Expected Task but got {type(other)}")
 
-        other(*self.outputs)
-        return self
-
-    def __ror__(self, others: list[WDLValue]) -> Task:
-        if all(isinstance(value, WDLValue) for value in others):
-            self(*others)
+    def __ror__(self, other: Union[list[WDLValue], list[Task]]) -> Task:
+        if all(isinstance(value, WDLValue) for value in other):
+            self(*other)
             return self
 
-        elif all(isinstance(task, Task) for task in others):
+        elif all(isinstance(task, Task) for task in other):
             values = []
-            for task in others:
+            for task in other:
                 output = task.get_outputs()
                 if is_iterable(output):
                     values.extend(output)
@@ -173,7 +182,7 @@ class Task:
             return self
 
         else:
-            raise TypeError(f"Expected list of Task or WDLValue but got {type(others)}")
+            raise TypeError(f"Expected list of Task or WDLValue but got {type(other)}")
 
 
 def task(
