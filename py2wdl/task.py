@@ -4,6 +4,7 @@ from textwrap import dedent
 from typing import Optional, Callable, Iterable, Union, Type, Any
 from typing import TypeVar, Generic
 from typing import get_origin, get_args
+from .utils import is_iterable
 
 
 class WDLValue:
@@ -108,7 +109,7 @@ class Task:
             else:
                 output = output_type(parent_task=self, output_idx=i)
             self.outputs.append(output)
-    
+
     def get_outputs(self) -> Union[WDLValue, list[WDLValue]]:
         output_length = len(self.outputs)
         if output_length == 0:
@@ -148,19 +149,31 @@ class Task:
             + f"Function Source:\n{func_source}"
         )
 
-    def __or__(self, other_task: Task) -> Task:
-        if not isinstance(other_task, Task):
-            raise TypeError(f"Expected Task but got {type(other_task)}")
-        
-        other_task(*self.outputs)
+    def __or__(self, other: Task) -> Task:
+        if not isinstance(other, Task):
+            raise TypeError(f"Expected Task but got {type(other)}")
+
+        other(*self.outputs)
         return self
-    
-    def __ror__(self, values: list[WDLValue]) -> Task:
-        if not all(isinstance(value, WDLValue) for value in values):
-            raise TypeError(f"Expected list of WDLValue but got {type(values)}")
-        
-        self(*values)
-        return self
+
+    def __ror__(self, others: list[WDLValue]) -> Task:
+        if all(isinstance(value, WDLValue) for value in others):
+            self(*others)
+            return self
+
+        elif all(isinstance(task, Task) for task in others):
+            values = []
+            for task in others:
+                output = task.get_outputs()
+                if is_iterable(output):
+                    values.extend(output)
+                else:
+                    values.append(output)
+            self(*values)
+            return self
+
+        else:
+            raise TypeError(f"Expected list of Task or WDLValue but got {type(others)}")
 
 
 def task(
