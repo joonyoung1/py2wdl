@@ -82,7 +82,7 @@ class Array(WDLValue, Generic[T]):
         return self.element_type
 
 
-class Task:
+class BaseTask:
     def __init__(
         self,
         func: Callable[..., Any],
@@ -93,8 +93,9 @@ class Task:
     ) -> None:
         self.func: Callable[..., Any] = func
         self.name: str = name
-        self.input_types = input_types
         self.meta: Optional[dict[str, Any]] = meta
+
+        self.input_types = input_types
         self.outputs: list[WDLValue] = []
         if output_types is not None:
             self.setting_output_values(output_types)
@@ -111,7 +112,8 @@ class Task:
             self.outputs.append(output)
 
     def get_outputs(self) -> Union[WDLValue, list[WDLValue]]:
-        output_length = len(self.outputs)
+        outputs = [output for output in self.outputs if type(output) != Condition]
+        output_length = len(outputs)
         if output_length == 0:
             return None
         elif output_length == 1:
@@ -147,6 +149,24 @@ class Task:
             f"Name: {self.name}\n"
             + (f"Metadata: ({meta_str})\n" if self.meta else "")
             + f"Function Source:\n{func_source}"
+        )
+
+
+class Task(BaseTask):
+    def __init__(
+        self,
+        func: Callable[..., Any],
+        name: str,
+        input_types: Iterable[Type[WDLValue]] = (),
+        output_types: Iterable[Type[WDLValue]] = (),
+        meta: dict[str, Any] = {},
+    ) -> None:
+        super().__init__(
+            func=func,
+            name=name,
+            input_types=input_types,
+            output_types=output_types,
+            meta=meta,
         )
 
     def __or__(self, other: Union[Task, list[Task]]) -> Task:
@@ -185,20 +205,55 @@ class Task:
             raise TypeError(f"Expected list of Task or WDLValue but got {type(other)}")
 
 
+class BranchTask(BaseTask):
+    def __init__(
+        self,
+        func: Callable[..., Any],
+        name: str,
+        input_types: Iterable[Type[WDLValue]] = (),
+        output_types: Iterable[Type[WDLValue]] = (),
+        meta: dict[str, Any] = {},
+    ) -> None:
+        super().__init__(
+            func=func,
+            name=name,
+            input_types=input_types,
+            output_types=output_types,
+            meta=meta,
+        )
+
+    def __gt__(self, other: list[Task]) -> list[Task]:
+        outputs = self.get_outputs()
+        for task in other:
+            task(*outputs)
+
+
 def task(
     name: Optional[str] = None,
     input_types: Iterable[Type[WDLValue]] = (),
     output_types: Iterable[Type[WDLValue]] = (),
     meta: dict[str, Any] = {},
+    branch: bool = False,
 ) -> Callable[..., Any]:
     def task_factory(func: Callable[..., Any]) -> Task:
-        return Task(
-            func=func,
-            name=name if name else func.__name__,
-            input_types=input_types,
-            output_types=output_types,
-            meta=meta,
-        )
+        task_name = name if name else func.__name__
+
+        if not branch:
+            return Task(
+                func=func,
+                name=task_name,
+                input_types=input_types,
+                output_types=output_types,
+                meta=meta,
+            )
+        else:
+            return BranchTask(
+                func=func,
+                name=task_name,
+                input_types=input_types,
+                output_types=output_types,
+                meta=meta,
+            )
 
     return task_factory
 

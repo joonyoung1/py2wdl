@@ -142,3 +142,17 @@ def test_pipeline_operation_with_fan_in_out():
     assert len(b.children) == 1
     assert b_child[0] == last_task
     assert b_child[1] == 1
+
+
+def test_branching_task():
+    @task(output_types=(Int, Condition))
+    def branching_task():
+        return 1, "task_b"
+    
+    @task(input_types=(Int,))
+    def task_a(value):
+        print(value)
+    
+    @task(input_types=(Int,))
+    def task_b(value):
+        print(value)
