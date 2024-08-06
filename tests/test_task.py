@@ -2,54 +2,152 @@ import pytest
 from py2wdl.task import *
 
 
-@task(
-    input_types=(Int, Int),
-    output_types=(Int,),
-)
-def task_add(a, b):
-    return a + b
+def test_basic_pipeline():
+    @task(output_types=(Int, String))
+    def first():
+        return 1, "test"
 
-
-@task(input_types=(Int,))
-def task_print(num):
-    print(num)
-
-
-@task(output_types=(Array[Int],))
-def task_generate_array():
-    return [i for i in range(10)]
-
-
-def test_connection_using_simple_variable():
-    a = Int(1)
-    b = Int(2)
-    result = task_add(a, b)
-    task_print(result)
-
-    assert result.parent_task == task_add
-    assert result.output_idx == 0
+    @task(input_types=(Int, String))
+    def second(a, b):
+        print(a, b)
     
-    child = result.child[0]
-    assert child[0] == task_print
-    assert child[1] == 0
+    first | second
+
+    a, b = first.get_outputs()
+    assert a.parent_task == first
+    assert a.output_idx == 0
+    assert b.parent_task == first
+    assert b.output_idx == 1
+
+    assert len(a.children) == 1
+    a_child = a.children[0]
+    assert a_child[0] == second
+    assert a_child[1] == 0
+
+    assert len(b.children) == 1
+    b_child = b.children[0]
+    assert b_child[0] == second
+    assert b_child[1] == 1
 
 
-def test_connection_using_array_variable():
-    array = task_generate_array()
-    assert isinstance(array, Array)
-    assert array.parent_task == task_generate_array
-    assert array.output_idx == 0
-    assert array.element_type == Int
+def test_value_input():
+    @task(input_types=(Int, Int))
+    def print_task(a, b):
+        print(a + b)
 
-    for num in array:
-        result = task_add(num, num)
-        assert isinstance(result, Int)
-        assert result.parent_task == task_add
-        assert result.output_idx == 0
-        assert len(num.child) == 2
-        
-        child_1, child_2 = num.child
-        assert child_1[0] == task_add
-        assert child_1[1] == 0
-        assert child_2[0] == task_add
-        assert child_2[1] == 1
+    a, b = Int(1), Int(2)
+    
+    [a, b] | print_task
+
+    assert len(a.children) == 1
+    assert a.children[0][0] == print_task
+    assert a.children[0][1] == 0
+
+    assert len(b.children) == 1
+    assert b.children[0][0] == print_task
+    assert b.children[0][1] == 1
+
+
+def test_fan_out_with_list():
+    @task(output_types=(Boolean, File))
+    def parent_task():
+        return True, "test.txt"
+
+    @task(input_types=(Boolean, File))
+    def child_task_a(a, b):
+        print(a, b)
+    
+    @task(input_types=(Boolean, File))
+    def child_task_b(a, b):
+        print(a, b)
+    
+    parent_task | [child_task_a, child_task_b]
+
+    a, b = parent_task.get_outputs()
+    assert a.parent_task == parent_task
+    assert a.output_idx == 0
+    assert b.parent_task == parent_task
+    assert b.output_idx == 1
+
+    assert len(a.children) == 2
+    assert a.children[0][0] == child_task_a
+    assert a.children[0][1] == 0
+    assert a.children[1][0] == child_task_b
+    assert a.children[1][1] == 0
+
+    assert len(b.children) == 2
+    assert b.children[0][0] == child_task_a
+    assert b.children[0][1] == 1
+    assert b.children[1][0] == child_task_b
+    assert b.children[1][1] == 1
+
+
+def test_fan_out_with_tuple():
+    @task(output_types=(Int, Boolean))
+    def parent_task():
+        return 1, False
+    
+    @task(input_types=(Int,))
+    def child_task_a(value):
+        print(value)
+    
+    @task(input_types=(Boolean,))
+    def child_task_b(value):
+        print(value)
+    
+    parent_task | (child_task_a, child_task_b)
+
+    a, b = parent_task.get_outputs()
+    assert a.parent_task == parent_task
+    assert a.output_idx == 0
+    assert b.parent_task == parent_task
+    assert b.output_idx == 1
+
+    assert len(a.children) == 1
+    assert a.children[0][0] == child_task_a
+    assert a.children[0][1] == 0
+    
+    assert len(b.children) == 1
+    assert b.children[0][0] == child_task_b
+    assert b.children[0][1] == 0
+
+
+def test_branch_pipeline():
+    @task(
+        output_types=(Int, Condition, Boolean),
+        branch=True
+    )
+    def branch_task():
+        return 1, "child_task_a", True
+
+    @task(input_types=(Int, Boolean))
+    def child_task_a(a, b):
+        print(a, b)
+    
+    @task(input_types=(Int, Boolean))
+    def child_task_b(a, b):
+        print(a, b)
+    
+    branch_task > [child_task_a, child_task_b]
+
+    condition = branch_task.condition
+    assert condition.parent_task == branch_task
+    assert condition.output_idx == 1
+
+    a, b = branch_task.get_outputs()
+    assert a.parent_task == branch_task
+    assert a.output_idx == 0
+    assert b.parent_task == branch_task
+    assert b.output_idx == 2
+
+    assert len(a.children) == 2
+    assert a.children[0][0] == child_task_a
+    assert a.children[0][1] == 0
+    assert a.children[1][0] == child_task_b
+    assert a.children[1][1] == 0
+
+    assert len(b.children) == 2
+    assert b.children[0][0] == child_task_a
+    assert b.children[0][1] == 1
+    assert b.children[1][0] == child_task_b
+    assert b.children[1][1] == 1
