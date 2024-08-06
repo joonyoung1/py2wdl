@@ -111,15 +111,7 @@ class BaseTask:
                 output = output_type(parent_task=self, output_idx=i)
             self.outputs.append(output)
 
-    def get_outputs(self) -> Union[WDLValue, list[WDLValue]]:
-        outputs = [output for output in self.outputs if type(output) != Condition]
-        output_length = len(outputs)
-        if output_length == 0:
-            return None
-        elif output_length == 1:
-            return self.outputs[0]
-        else:
-            return self.outputs
+    def get_outputs(self) -> list[WDLValue]: ...
 
     def __call__(self, *args: WDLValue) -> Union[WDLValue, list[WDLValue]]:
         if len(args) != len(self.input_types):
@@ -169,19 +161,27 @@ class Task(BaseTask):
             meta=meta,
         )
 
-    def __or__(self, other: Union[Task, list[Task]]) -> Task:
+    def get_outputs(self) -> list[WDLValue]:
+        return self.outputs
+
+    def __or__(self, other: Union[Task, list[Task], tuple[Task]]) -> Task:
         if isinstance(other, Task):
             other(*self.outputs)
             return other
 
         elif all(isinstance(task, Task) for task in other):
-            i = 0
-            for task in other:
-                length = len(task.input_types)
-                task(*self.outputs[i : i + length])
-                i += length
-            return other
+            if isinstance(other, list):
+                for task in other:
+                    task(*self.outputs)
 
+            elif isinstance(other, tuple):
+                i = 0
+                for task in other:
+                    length = len(task.input_types)
+                    task(*self.outputs[i : i + length])
+                    i += length
+
+            return other
         else:
             raise TypeError(f"Expected Task but got {type(other)}")
 
@@ -193,11 +193,7 @@ class Task(BaseTask):
         elif all(isinstance(task, Task) for task in other):
             values = []
             for task in other:
-                output = task.get_outputs()
-                if is_iterable(output):
-                    values.extend(output)
-                else:
-                    values.append(output)
+                values.extend(task.get_outputs())
             self(*values)
             return self
 
@@ -214,6 +210,9 @@ class BranchTask(BaseTask):
         output_types: Iterable[Type[WDLValue]] = (),
         meta: dict[str, Any] = {},
     ) -> None:
+        if Condition not in output_types:
+            raise TypeError("BranchTask must include a Condition in its output")
+
         super().__init__(
             func=func,
             name=name,
@@ -221,6 +220,14 @@ class BranchTask(BaseTask):
             output_types=output_types,
             meta=meta,
         )
+
+        for output in self.outputs:
+            if type(output) is Condition:
+                self.condition = output
+                break        
+
+    def get_outputs(self) -> list[WDLValue]:
+        return [output for output in self.outputs if type(output) != Condition]
 
     def __gt__(self, other: list[Task]) -> list[Task]:
         outputs = self.get_outputs()
