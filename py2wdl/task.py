@@ -82,7 +82,7 @@ class Array(WDLValue, Generic[T]):
         return self.element_type
 
 
-class BaseTask:
+class Task:
     def __init__(
         self,
         func: Callable[..., Any],
@@ -90,6 +90,7 @@ class BaseTask:
         input_types: Iterable[Type[WDLValue]] = (),
         output_types: Iterable[Type[WDLValue]] = (),
         meta: dict[str, Any] = {},
+        branch: bool = False,
     ) -> None:
         self.func: Callable[..., Any] = func
         self.name: str = name
@@ -99,6 +100,17 @@ class BaseTask:
         self.outputs: list[WDLValue] = []
         if output_types is not None:
             self.setting_output_values(output_types)
+
+        self.branch: bool = branch
+        self.condition: Condition
+        if branch:
+            if Condition not in output_types:
+                raise TypeError("BranchTask must include a Condition in its output")
+
+            for output in self.outputs:
+                if type(output) is Condition:
+                    self.condition = output
+                    break
 
     def setting_output_values(self, output_types: Iterable[Type[WDLValue]]) -> None:
         for i, output_type in enumerate(output_types):
@@ -111,7 +123,11 @@ class BaseTask:
                 output = output_type(parent_task=self, output_idx=i)
             self.outputs.append(output)
 
-    def get_outputs(self) -> list[WDLValue]: ...
+    def get_outputs(self) -> list[WDLValue]:
+        if self.branch:
+            return [output for output in self.outputs if type(output) != Condition]
+        else:
+            return self.outputs
 
     def __call__(self, *args: WDLValue) -> Union[WDLValue, list[WDLValue]]:
         if len(args) != len(self.input_types):
@@ -128,41 +144,6 @@ class BaseTask:
                 arg.add_child(self, i)
 
         return self.get_outputs()
-
-    def execute(self, *args: Any, **kwargs: Any) -> Any:
-        return self.func(*args, **kwargs)
-
-    def __str__(self) -> str:
-        if self.meta:
-            meta_str = ", ".join(f"{k}={v!r}" for k, v in self.meta.items())
-        func_source = dedent(inspect.getsource(self.func)).strip()
-
-        return (
-            f"Name: {self.name}\n"
-            + (f"Metadata: ({meta_str})\n" if self.meta else "")
-            + f"Function Source:\n{func_source}"
-        )
-
-
-class Task(BaseTask):
-    def __init__(
-        self,
-        func: Callable[..., Any],
-        name: str,
-        input_types: Iterable[Type[WDLValue]] = (),
-        output_types: Iterable[Type[WDLValue]] = (),
-        meta: dict[str, Any] = {},
-    ) -> None:
-        super().__init__(
-            func=func,
-            name=name,
-            input_types=input_types,
-            output_types=output_types,
-            meta=meta,
-        )
-
-    def get_outputs(self) -> list[WDLValue]:
-        return self.outputs
 
     def __or__(self, other: Union[Task, list[Task], tuple[Task]]) -> Task:
         if isinstance(other, Task):
@@ -200,39 +181,24 @@ class Task(BaseTask):
         else:
             raise TypeError(f"Expected list of Task or WDLValue but got {type(other)}")
 
-
-class BranchTask(BaseTask):
-    def __init__(
-        self,
-        func: Callable[..., Any],
-        name: str,
-        input_types: Iterable[Type[WDLValue]] = (),
-        output_types: Iterable[Type[WDLValue]] = (),
-        meta: dict[str, Any] = {},
-    ) -> None:
-        if Condition not in output_types:
-            raise TypeError("BranchTask must include a Condition in its output")
-
-        super().__init__(
-            func=func,
-            name=name,
-            input_types=input_types,
-            output_types=output_types,
-            meta=meta,
-        )
-
-        for output in self.outputs:
-            if type(output) is Condition:
-                self.condition = output
-                break        
-
-    def get_outputs(self) -> list[WDLValue]:
-        return [output for output in self.outputs if type(output) != Condition]
-
     def __gt__(self, other: list[Task]) -> list[Task]:
         outputs = self.get_outputs()
         for task in other:
             task(*outputs)
+
+    def execute(self, *args: Any, **kwargs: Any) -> Any:
+        return self.func(*args, **kwargs)
+
+    def __str__(self) -> str:
+        if self.meta:
+            meta_str = ", ".join(f"{k}={v!r}" for k, v in self.meta.items())
+        func_source = dedent(inspect.getsource(self.func)).strip()
+
+        return (
+            f"Name: {self.name}\n"
+            + (f"Metadata: ({meta_str})\n" if self.meta else "")
+            + f"Function Source:\n{func_source}"
+        )
 
 
 def task(
@@ -243,24 +209,14 @@ def task(
     branch: bool = False,
 ) -> Callable[..., Any]:
     def task_factory(func: Callable[..., Any]) -> Task:
-        task_name = name if name else func.__name__
-
-        if not branch:
-            return Task(
-                func=func,
-                name=task_name,
-                input_types=input_types,
-                output_types=output_types,
-                meta=meta,
-            )
-        else:
-            return BranchTask(
-                func=func,
-                name=task_name,
-                input_types=input_types,
-                output_types=output_types,
-                meta=meta,
-            )
+        return Task(
+            func=func,
+            name=name if name else func.__name__,
+            input_types=input_types,
+            output_types=output_types,
+            meta=meta,
+            branch=branch
+        )
 
     return task_factory
 
