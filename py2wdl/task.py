@@ -9,15 +9,31 @@ from .utils import is_iterable
 
 class WDLValue:
     def __init__(
-        self, parent_task: Optional[Task] = None, output_idx: Optional[int] = None
+        self,
+        parent_task: Optional[Task] = None,
+        output_idx: Optional[int] = None,
     ) -> None:
         self.name: str = str(id(self))
         self.parent_task: Optional[Task] = parent_task
         self.output_idx: Optional[int] = output_idx
         self.children: list[tuple[Task, int]] = []
+        self.scattered: bool = False
 
     def add_child(self, child_task: Task, input_idx: int) -> None:
         self.children.append((child_task, input_idx))
+
+    def use_scatter(self) -> None:
+        self.scattered = True
+
+    def is_scattered(self) -> bool:
+        return self.scattered
+
+    def wrap(self) -> Array:
+        return Array(
+            element_type=type(self),
+            parent_task=self.parent_task,
+            output_idx=self.output_idx,
+        )
 
 
 class Boolean(WDLValue):
@@ -73,10 +89,9 @@ class Array(WDLValue, Generic[T]):
         super().__init__(parent_task, output_idx)
         self.element_type: Type[WDLValue] = element_type
         self.value: list[Union[bool, int, str]] = value
-        self.element = self.element_type(parent_task=parent_task, output_idx=output_idx)
-
-    def __iter__(self) -> Iterable[WDLValue]:
-        return iter([self.element])
+        self.element: WDLValue = self.element_type(
+            parent_task=parent_task, output_idx=output_idx
+        )
 
     def get_element_type(self) -> Type[WDLValue]:
         return self.element_type
@@ -95,7 +110,7 @@ class BaseTask:
         self.name: str = name
         self.meta: Optional[dict[str, Any]] = meta
 
-        self.input_types = input_types
+        self.input_types: Iterable[Type[WDLValue]] = input_types
         self.outputs: list[WDLValue] = []
         if output_types is not None:
             self.setting_output_values(output_types)
@@ -200,6 +215,26 @@ class Task(BaseTask):
         else:
             raise TypeError(f"Expected list of Task or WDLValue but got {type(other)}")
 
+    def __lshift__(self, other: Task) -> Task:
+        if not all(isinstance(value, Array) for value in self.outputs):
+            raise ValueError("All outputs must be of type Array for scatter operation")
+
+        outputs = []
+        for output in self.outputs:
+            element = output.element
+            element.use_scatter()
+            output.append(element)
+
+        other(*outputs)
+        return other
+
+    def __rshift__(self, other: Task) -> Task:
+        if not all(element.is_scattered() for element in self.outputs):
+            raise ValueError("All outputs must be scattered for gathar operation")
+        
+        other(*[output.wrap() for output in self.outputs])
+        return other
+
 
 class BranchTask(BaseTask):
     def __init__(
@@ -224,7 +259,7 @@ class BranchTask(BaseTask):
         for output in self.outputs:
             if type(output) is Condition:
                 self.condition = output
-                break        
+                break
 
     def get_outputs(self) -> list[WDLValue]:
         return [output for output in self.outputs if type(output) != Condition]
