@@ -4,7 +4,6 @@ from textwrap import dedent
 from typing import Optional, Callable, Iterable, Union, Type, Any
 from typing import TypeVar, Generic
 from typing import get_origin, get_args
-from .utils import is_iterable
 
 
 class WDLValue:
