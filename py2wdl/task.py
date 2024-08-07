@@ -16,16 +16,9 @@ class WDLValue:
         self.parent_task: Optional[Task] = parent_task
         self.output_idx: Optional[int] = output_idx
         self.children: list[tuple[Task, int]] = []
-        self.scattered: bool = False
 
     def add_child(self, child_task: Task, input_idx: int) -> None:
         self.children.append((child_task, input_idx))
-
-    def use_scatter(self) -> None:
-        self.scattered = True
-
-    def is_scattered(self) -> bool:
-        return self.scattered
 
     def wrap(self) -> Array:
         return Array(
@@ -126,6 +119,8 @@ class Task:
                     self.condition = output
                     break
 
+        self.scattered: bool = False
+
     def setting_output_values(self, output_types: Iterable[Type[WDLValue]]) -> None:
         for i, output_type in enumerate(output_types):
             if get_origin(output_type) is Array:
@@ -143,6 +138,12 @@ class Task:
         else:
             return self.outputs
 
+    def use_scatter(self):
+        self.scattered = True
+
+    def is_scattered(self):
+        return self.scattered
+
     def __call__(self, *args: WDLValue) -> Union[WDLValue, list[WDLValue]]:
         if len(args) != len(self.input_types):
             raise TypeError(
@@ -150,7 +151,11 @@ class Task:
             )
 
         for i, (arg, t) in enumerate(zip(args, self.input_types)):
-            if not isinstance(arg, t):
+            origin = get_origin(t)
+            if (origin is None and not isinstance(arg, t)) or (
+                origin is Array
+                and not (isinstance(arg, Array) and arg.element_type is get_args(t)[0])
+            ):
                 raise TypeError(
                     f"Expected type {t} on argument {i}, but got {type(arg)}."
                 )
@@ -194,7 +199,7 @@ class Task:
 
         else:
             raise TypeError(f"Expected list of Task or WDLValue but got {type(other)}")
-    
+
     def __lshift__(self, other: Task) -> Task:
         if not all(isinstance(value, Array) for value in self.outputs):
             raise ValueError("All outputs must be of type Array for scatter operation")
@@ -202,16 +207,16 @@ class Task:
         outputs = []
         for output in self.outputs:
             element = output.element
-            element.use_scatter()
-            output.append(element)
+            outputs.append(element)
 
         other(*outputs)
+        other.use_scatter()
         return other
 
     def __rshift__(self, other: Task) -> Task:
-        if not all(element.is_scattered() for element in self.outputs):
-            raise ValueError("All outputs must be scattered for gathar operation")
-        
+        if not self.is_scattered():
+            raise ValueError("Task must be scattered for gathar operation")
+
         other(*[output.wrap() for output in self.outputs])
         return other
 
@@ -249,7 +254,7 @@ def task(
             input_types=input_types,
             output_types=output_types,
             meta=meta,
-            branch=branch
+            branch=branch,
         )
 
     return task_factory
@@ -257,21 +262,38 @@ def task(
 
 if __name__ == "__main__":
 
-    @task(
-        input_types=(Int,),
-        output_types=(Array[Int],),
-    )
-    def task_a(num: int):
-        my_array = [i for i in range(num)]
-        return my_array
+    # @task(
+    #     input_types=(Int,),
+    #     output_types=(Array[Int],),
+    # )
+    # def task_a(num: int):
+    #     my_array = [i for i in range(num)]
+    #     return my_array
+
+    # @task(
+    #     input_types=(Int,),
+    # )
+    # def task_b(num: int):
+    #     print(num)
+
+    # task_a_input = Int(value=10)
+    # generated_array = task_a(task_a_input)
+    # for num in generated_array:
+    #     task_b(num)
+
+    @task(output_types=(Array[Int],))
+    def start_task():
+        return [1, 2, 3]
 
     @task(
         input_types=(Int,),
+        output_types=(String,),
     )
-    def task_b(num: int):
-        print(num)
+    def scattered_task(value):
+        return str(value)
 
-    task_a_input = Int(value=10)
-    generated_array = task_a(task_a_input)
-    for num in generated_array:
-        task_b(num)
+    @task(input_types=(Array[String],))
+    def gathared_task(array):
+        print(array)
+
+    start_task << scattered_task >> gathared_task
