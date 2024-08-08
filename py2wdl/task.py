@@ -31,6 +31,9 @@ class WDLValue:
         )
         return self.array
 
+    def is_wrapped(self) -> bool:
+        return self.wrapped
+
 class Boolean(WDLValue):
     def __init__(
         self,
@@ -170,18 +173,24 @@ class Task:
     def __or__(self, other: Union[Task, list[Task], tuple[Task]]) -> Task:
         if isinstance(other, Task):
             other(*self.outputs)
+            if self.is_scattered():
+                other.use_scatter()
             return other
 
         elif all(isinstance(task, Task) for task in other):
             if isinstance(other, list):
                 for task in other:
                     task(*self.outputs)
+                    if self.is_scattered():
+                        task.use_scatter()
 
             elif isinstance(other, tuple):
                 i = 0
                 for task in other:
                     length = len(task.input_types)
                     task(*self.outputs[i : i + length])
+                    if self.is_scattered():
+                        task.use_scatter()
                     i += length
 
             return other

@@ -162,14 +162,21 @@ def test_scatter_pipeline():
         input_types=(Int,),
         output_types=(String,),
     )
-    def scattered_task(value):
+    def scattered_task_a(value):
         return str(value)
+
+    @task(
+        input_types=(String,),
+        output_types=(String,),
+    )
+    def scattered_task_b(value):
+        return value
 
     @task(input_types=(Array[String],))
     def gathered_task(array):
         print(array)
     
-    start_task << scattered_task >> gathered_task
+    ((start_task << scattered_task_a) | scattered_task_b) >> gathered_task
 
     assert not start_task.is_scattered()
     assert len(start_task.outputs) == 1
@@ -179,16 +186,28 @@ def test_scatter_pipeline():
     
     assert len(array.children) == 0
     assert len(array.element.children) == 1
-    assert array.element.children[0][0] == scattered_task
+    assert array.element.children[0][0] == scattered_task_a
     assert array.element.children[0][1] == 0
 
-    assert scattered_task.is_scattered()
-    assert len(scattered_task.outputs) == 1
-    element = scattered_task.outputs[0]
-    assert element.parent_task == scattered_task
+    assert scattered_task_a.is_scattered()
+    assert len(scattered_task_a.outputs) == 1
+    element = scattered_task_a.outputs[0]
+    assert element.parent_task == scattered_task_a
     assert element.output_idx == 0
 
-    assert len(element.children) == 0
+    assert not element.is_wrapped()
+    assert len(element.children) == 1
+    assert element.array is None
+    assert element.children[0][0] == scattered_task_b
+    assert element.children[0][1] == 0
+
+    assert scattered_task_b.is_scattered()
+    assert len(scattered_task_b.outputs) == 1
+    element = scattered_task_b.outputs[0]
+    assert element.parent_task == scattered_task_b
+    assert element.output_idx == 0
+
+    assert element.is_wrapped()
     assert len(element.array.children) == 1
     assert element.array.children[0][0] == gathered_task
     assert element.array.children[0][1] == 0
