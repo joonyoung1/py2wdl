@@ -16,17 +16,20 @@ class WDLValue:
         self.parent_task: Optional[Task] = parent_task
         self.output_idx: Optional[int] = output_idx
         self.children: list[tuple[Task, int]] = []
+        self.wrapped: bool = False
+        self.array: Union[None, Array] = None
 
     def add_child(self, child_task: Task, input_idx: int) -> None:
         self.children.append((child_task, input_idx))
 
     def wrap(self) -> Array:
-        return Array(
+        self.wrapped = True
+        self.array = Array(
             element_type=type(self),
             parent_task=self.parent_task,
             output_idx=self.output_idx,
         )
-
+        return self.array
 
 class Boolean(WDLValue):
     def __init__(

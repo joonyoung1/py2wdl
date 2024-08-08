@@ -151,3 +151,46 @@ def test_branch_pipeline():
     assert b.children[0][1] == 1
     assert b.children[1][0] == child_task_b
     assert b.children[1][1] == 1
+
+
+def test_scatter_pipeline():
+    @task(output_types=(Array[Int],))
+    def start_task():
+        return [1, 2, 3]
+
+    @task(
+        input_types=(Int,),
+        output_types=(String,),
+    )
+    def scattered_task(value):
+        return str(value)
+
+    @task(input_types=(Array[String],))
+    def gathered_task(array):
+        print(array)
+    
+    start_task << scattered_task >> gathered_task
+
+    assert not start_task.is_scattered()
+    assert len(start_task.outputs) == 1
+    array = start_task.outputs[0]
+    assert array.parent_task == start_task
+    assert array.output_idx == 0
+    
+    assert len(array.children) == 0
+    assert len(array.element.children) == 1
+    assert array.element.children[0][0] == scattered_task
+    assert array.element.children[0][1] == 0
+
+    assert scattered_task.is_scattered()
+    assert len(scattered_task.outputs) == 1
+    element = scattered_task.outputs[0]
+    assert element.parent_task == scattered_task
+    assert element.output_idx == 0
+
+    assert len(element.children) == 0
+    assert len(element.array.children) == 1
+    assert element.array.children[0][0] == gathered_task
+    assert element.array.children[0][1] == 0
+
+    assert not gathered_task.is_scattered()
