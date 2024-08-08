@@ -82,6 +82,60 @@ class Array(WDLValue, Generic[T]):
         return self.element_type
 
 
+class Workflow:
+    def __init__(self, components: list = []) -> None:
+        self.components: list = components
+
+    def __or__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
+        self.connect(other, operator="|")
+        return self
+
+    def __ror__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
+        self.connect(other, operator="|", reversed=True)
+        return self
+    
+    def __lt__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
+        self.connect(other, operator="<")
+        return self
+    
+    def __gt__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
+        self.connect(other, operator="<", reversed=True)
+        return self
+    
+    def __lshift__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
+        self.connect(other, operator="<<")
+        return self
+    
+    def __rlshift__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
+        self.connect(other, operator="<<", reversed=True)
+        return self
+    
+    def __rshift__(self,  other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
+        self.connect(other, operator=">>")
+        return self
+    
+    def __rrshift__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
+        self.connect(other, operator=">>", reversed=True)
+        return self
+
+    def connect(
+        self,
+        other: Union[Task, Workflow, Iterable[Task]],
+        operator: str,
+        reversed: bool = False,
+    ) -> None:
+        if isinstance(other, Workflow):
+            if reversed:
+                self.components = other.components + [operator] + self.components
+            else:
+                self.components = self.components + [operator] + other.components
+        else:
+            if reversed:
+                self.components = [other, operator] + self.components
+            else:
+                self.components = self.components + [operator, other]
+
+
 class Task:
     def __init__(
         self,
@@ -215,7 +269,7 @@ def task(
             input_types=input_types,
             output_types=output_types,
             meta=meta,
-            branch=branch
+            branch=branch,
         )
 
     return task_factory
