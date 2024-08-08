@@ -83,8 +83,8 @@ class Array(WDLValue, Generic[T]):
 
 
 class Workflow:
-    def __init__(self, components: list = []) -> None:
-        self.components: list = components
+    def __init__(self, component: Task) -> None:
+        self.components: list = [component]
 
     def __or__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
         self.connect(other, operator="|")
@@ -199,46 +199,58 @@ class Task:
 
         return self.get_outputs()
 
-    def __or__(self, other: Union[Task, list[Task], tuple[Task]]) -> Task:
-        if isinstance(other, Task):
-            other(*self.outputs)
-            return other
+    def __or__(self, other: Union[Task, list[Task], tuple[Task]]) -> Workflow:
+        workflow = Workflow(self)
+        return workflow | other
 
-        elif all(isinstance(task, Task) for task in other):
-            if isinstance(other, list):
-                for task in other:
-                    task(*self.outputs)
+    # def __or__(self, other: Union[Task, list[Task], tuple[Task]]) -> Task:
+    #     if isinstance(other, Task):
+    #         other(*self.outputs)
+    #         return other
 
-            elif isinstance(other, tuple):
-                i = 0
-                for task in other:
-                    length = len(task.input_types)
-                    task(*self.outputs[i : i + length])
-                    i += length
+    #     elif all(isinstance(task, Task) for task in other):
+    #         if isinstance(other, list):
+    #             for task in other:
+    #                 task(*self.outputs)
 
-            return other
-        else:
-            raise TypeError(f"Expected Task but got {type(other)}")
+    #         elif isinstance(other, tuple):
+    #             i = 0
+    #             for task in other:
+    #                 length = len(task.input_types)
+    #                 task(*self.outputs[i : i + length])
+    #                 i += length
 
-    def __ror__(self, other: Union[list[WDLValue], list[Task]]) -> Task:
-        if all(isinstance(value, WDLValue) for value in other):
-            self(*other)
-            return self
+    #         return other
+    #     else:
+    #         raise TypeError(f"Expected Task but got {type(other)}")
 
-        elif all(isinstance(task, Task) for task in other):
-            values = []
-            for task in other:
-                values.extend(task.get_outputs())
-            self(*values)
-            return self
+    def __ror__(self, other: Union[list[WDLValue], list[Task]]) -> Workflow:
+        workflow = Workflow(self)
+        return other | workflow
 
-        else:
-            raise TypeError(f"Expected list of Task or WDLValue but got {type(other)}")
+    # def __ror__(self, other: Union[list[WDLValue], list[Task]]) -> Task:
+    #     if all(isinstance(value, WDLValue) for value in other):
+    #         self(*other)
+    #         return self
 
-    def __gt__(self, other: list[Task]) -> list[Task]:
-        outputs = self.get_outputs()
-        for task in other:
-            task(*outputs)
+    #     elif all(isinstance(task, Task) for task in other):
+    #         values = []
+    #         for task in other:
+    #             values.extend(task.get_outputs())
+    #         self(*values)
+    #         return self
+
+    #     else:
+    #         raise TypeError(f"Expected list of Task or WDLValue but got {type(other)}")
+
+    def __lt__(self, other: list[Task]) -> Workflow:
+        workflow = Workflow(self)
+        return workflow < other
+
+    # def __lt__(self, other: list[Task]) -> list[Task]:
+    #     outputs = self.get_outputs()
+    #     for task in other:
+    #         task(*outputs)
 
     def execute(self, *args: Any, **kwargs: Any) -> Any:
         return self.func(*args, **kwargs)
