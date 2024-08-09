@@ -4,7 +4,6 @@ from textwrap import dedent
 from typing import Optional, Callable, Iterable, Union, Type, Any
 from typing import TypeVar, Generic
 from typing import get_origin, get_args
-from .utils import is_iterable
 
 
 class WDLValue:
@@ -80,6 +79,23 @@ class Array(WDLValue, Generic[T]):
 
     def get_element_type(self) -> Type[WDLValue]:
         return self.element_type
+    
+
+class WorkflowManager:
+    def __init__(self) -> None:
+        self.root = None
+    
+    def add_workflow(self, workflow: Workflow) -> None:
+        base = workflow.components[0]
+        for i in range(1, len(workflow.components), 2):
+            operator = workflow.components[i]
+            other = workflow.component[i + 1]
+
+            if operator == "|":
+                base | other
+            elif operator == "<<":
+                base << other
+            base = other
 
 
 class Workflow:
