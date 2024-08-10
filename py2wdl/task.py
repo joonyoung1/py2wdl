@@ -115,7 +115,6 @@ class Task(WorkflowComponent):
         input_types: Iterable[Type[WDLValue]] = (),
         output_types: Iterable[Type[WDLValue]] = (),
         meta: dict[str, Any] = {},
-        branch: bool = False,
     ) -> None:
         self.func: Callable[..., Any] = func
         self.name: str = name
@@ -126,22 +125,17 @@ class Task(WorkflowComponent):
         if output_types is not None:
             self.setting_output_values(output_types)
 
-        self.branch: bool = branch
-        self.condition: Condition
-        if branch:
-            if Condition not in output_types:
-                raise TypeError("BranchTask must include a Condition in its output")
-
-            for output in self.outputs:
-                if type(output) is Condition:
-                    self.condition = output
-                    break
+        self.condition: Union[bool, None] = None
+        for output in self.outputs:
+            if type(output) is Condition:
+                self.condition = output
+                break
 
     def setting_output_values(self, output_types: Iterable[Type[WDLValue]]) -> None:
         for i, output_type in enumerate(output_types):
             if get_origin(output_type) is Array:
                 element_type = get_args(output_type)[0]
-                output = output_type(
+                output = output_type( 
                     parent_task=self, output_idx=i, element_type=element_type
                 )
             else:
@@ -149,7 +143,7 @@ class Task(WorkflowComponent):
             self.outputs.append(output)
 
     def get_outputs(self) -> list[WDLValue]:
-        if self.branch:
+        if self.branching:
             return [output for output in self.outputs if type(output) != Condition]
         else:
             return self.outputs
@@ -232,7 +226,6 @@ def task(
     input_types: Iterable[Type[WDLValue]] = (),
     output_types: Iterable[Type[WDLValue]] = (),
     meta: dict[str, Any] = {},
-    branch: bool = False,
 ) -> Callable[..., Any]:
     def task_factory(func: Callable[..., Any]) -> Task:
         return Task(
@@ -241,7 +234,6 @@ def task(
             input_types=input_types,
             output_types=output_types,
             meta=meta,
-            branch=branch,
         )
 
     return task_factory
