@@ -1,10 +1,27 @@
 from __future__ import annotations
 import inspect
 from textwrap import dedent
+from itertools import chain
+
 from typing import Optional, Callable, Iterable, Union, Type, Any
 from typing import TypeVar, Generic
 from typing import get_origin, get_args
-from .utils import is_iterable
+
+
+class Tasks:
+    def __init__(self, *tasks: Task):
+        self.tasks: Iterable[Task] = tasks
+    
+    def get_outputs(self) -> list[WDLValue]:
+        return list(chain(*(task.get_outputs() for task in self.tasks)))
+
+
+class Values:
+    def __init__(self, *values: WDLValue):
+        self.values: Iterable[WDLValue] = values
+
+    def get_outputs(self) -> list[WDLValue]:
+        return self.values
 
 
 class WDLValue:
@@ -215,7 +232,7 @@ def task(
             input_types=input_types,
             output_types=output_types,
             meta=meta,
-            branch=branch
+            branch=branch,
         )
 
     return task_factory
