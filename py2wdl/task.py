@@ -143,7 +143,7 @@ class Task(WorkflowComponent):
             self.outputs.append(output)
 
     def get_outputs(self) -> list[WDLValue]:
-        if self.branching:
+        if self.condition is not None:
             return [output for output in self.outputs if type(output) != Condition]
         else:
             return self.outputs
