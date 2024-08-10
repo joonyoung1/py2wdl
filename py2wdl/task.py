@@ -7,8 +7,10 @@ from typing import Optional, Callable, Iterable, Union, Type, Any
 from typing import TypeVar, Generic
 from typing import get_origin, get_args
 
+from .workflow import WorkflowComponent
 
-class Tasks:
+
+class Tasks(WorkflowComponent):
     def __init__(self, *tasks: Task):
         self.tasks: Iterable[Task] = tasks
     
@@ -16,7 +18,13 @@ class Tasks:
         return list(chain(*(task.get_outputs() for task in self.tasks)))
 
 
-class Values:
+class ParallelTasks(Tasks): ...
+
+
+class DistributedTasks(Tasks): ...
+
+
+class Values(WorkflowComponent):
     def __init__(self, *values: WDLValue):
         self.values: Iterable[WDLValue] = values
 
@@ -99,89 +107,7 @@ class Array(WDLValue, Generic[T]):
         return self.element_type
 
 
-class WorkflowManager:
-    def __init__(self) -> None:
-        self.root = None
-
-    def add_workflow(self, workflow: Workflow) -> None:
-        base = workflow.components[0]
-        for i in range(1, len(workflow.components), 2):
-            operator = workflow.components[i]
-            other = workflow.component[i + 1]
-
-            if operator == "|":
-                if isinstance(base, Task):
-                    base._or(other)
-                elif isinstance(other, Task):
-                    other._ror(base)
-                else:
-                    raise TypeError(
-                        f"Task must included as an operand, but got {type(base)} and {type(other)}"
-                    )
-            elif operator == "<":
-                base._lt(other)
-            elif operator == "<<":
-                base._lshift(other)
-            elif operator == ">>":
-                base._rshift(other)
-            base = other
-
-
-class Workflow:
-    def __init__(self, component: Task) -> None:
-        self.components: list = [component]
-
-    def __or__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
-        self.connect(other, operator="|")
-        return self
-
-    def __ror__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
-        self.connect(other, operator="|", reversed=True)
-        return self
-
-    def __lt__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
-        self.connect(other, operator="<")
-        return self
-
-    def __gt__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
-        self.connect(other, operator="<", reversed=True)
-        return self
-
-    def __lshift__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
-        self.connect(other, operator="<<")
-        return self
-
-    def __rlshift__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
-        self.connect(other, operator="<<", reversed=True)
-        return self
-
-    def __rshift__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
-        self.connect(other, operator=">>")
-        return self
-
-    def __rrshift__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
-        self.connect(other, operator=">>", reversed=True)
-        return self
-
-    def connect(
-        self,
-        other: Union[Task, Workflow, Iterable[Task]],
-        operator: str,
-        reversed: bool = False,
-    ) -> None:
-        if isinstance(other, Workflow):
-            if reversed:
-                self.components = other.components + [operator] + self.components
-            else:
-                self.components = self.components + [operator] + other.components
-        else:
-            if reversed:
-                self.components = [other, operator] + self.components
-            else:
-                self.components = self.components + [operator, other]
-
-
-class Task:
+class Task(WorkflowComponent):
     def __init__(
         self,
         func: Callable[..., Any],
@@ -244,17 +170,6 @@ class Task:
 
         return self.get_outputs()
 
-    def __or__(self, other: Union[Task, list[Task], tuple[Task]]) -> Workflow:
-        workflow = Workflow(self)
-        return workflow | other
-
-    def __ror__(self, other: Union[list[WDLValue], list[Task]]) -> Workflow:
-        workflow = Workflow(self)
-        return other | workflow
-
-    def __lt__(self, other: list[Task]) -> Workflow:
-        workflow = Workflow(self)
-        return workflow < other
 
     def _or(self, other: Union[Task, list[Task], tuple[Task]]) -> Task:
         if isinstance(other, Task):
