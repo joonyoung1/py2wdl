@@ -79,12 +79,12 @@ class Array(WDLValue, Generic[T]):
 
     def get_element_type(self) -> Type[WDLValue]:
         return self.element_type
-    
+
 
 class WorkflowManager:
     def __init__(self) -> None:
         self.root = None
-    
+
     def add_workflow(self, workflow: Workflow) -> None:
         base = workflow.components[0]
         for i in range(1, len(workflow.components), 2):
@@ -92,9 +92,20 @@ class WorkflowManager:
             other = workflow.component[i + 1]
 
             if operator == "|":
-                base | other
+                if isinstance(base, Task):
+                    base._or(other)
+                elif isinstance(other, Task):
+                    other._ror(base)
+                else:
+                    raise TypeError(
+                        f"Task must included as an operand, but got {type(base)} and {type(other)}"
+                    )
+            elif operator == "<":
+                base._lt(other)
             elif operator == "<<":
-                base << other
+                base._lshift(other)
+            elif operator == ">>":
+                base._rshift(other)
             base = other
 
 
@@ -109,27 +120,27 @@ class Workflow:
     def __ror__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
         self.connect(other, operator="|", reversed=True)
         return self
-    
+
     def __lt__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
         self.connect(other, operator="<")
         return self
-    
+
     def __gt__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
         self.connect(other, operator="<", reversed=True)
         return self
-    
+
     def __lshift__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
         self.connect(other, operator="<<")
         return self
-    
+
     def __rlshift__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
         self.connect(other, operator="<<", reversed=True)
         return self
-    
-    def __rshift__(self,  other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
+
+    def __rshift__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
         self.connect(other, operator=">>")
         return self
-    
+
     def __rrshift__(self, other: Union[Task, Workflow, Iterable[Task]]) -> Workflow:
         self.connect(other, operator=">>", reversed=True)
         return self
@@ -208,7 +219,7 @@ class Task:
         for i, (arg, t) in enumerate(zip(args, self.input_types)):
             if not isinstance(arg, t):
                 raise TypeError(
-                    f"Expected type {t} on argument {i}, but got {type(arg)}."
+                    f"Expected type {t} on argument {i}, but got {type(arg)}"
                 )
             else:
                 arg.add_child(self, i)
@@ -226,7 +237,7 @@ class Task:
     def __lt__(self, other: list[Task]) -> Workflow:
         workflow = Workflow(self)
         return workflow < other
-    
+
     def _or(self, other: Union[Task, list[Task], tuple[Task]]) -> Task:
         if isinstance(other, Task):
             other(*self.outputs)
