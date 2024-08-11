@@ -7,19 +7,18 @@ class WorkflowManager:
         self.root = None
 
     def add_workflow(self, workflow: Workflow) -> None:
-        base = workflow.components[0]
-        for i in range(1, len(workflow.components), 2):
-            operator = workflow.components[i]
-            other = workflow.component[i + 1]
+        base = workflow.operands[0]
+        for other, operator in zip(workflow.operands[1:], workflow.operators):
 
+            outputs = base.get_outputs()
             if operator == "|":
-                base.forward(other)
+                other.forward(outputs)
             elif operator == "<":
-                base.branch(other)
+                other.branch(outputs)
             elif operator == "<<":
-                base.scatter(other)
+                other.scatter(outputs)
             elif operator == ">>":
-                base.gather(other)
+                other.gather(outputs)
             else:
                 raise ValueError(f"Unsupported operator")
                 

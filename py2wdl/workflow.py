@@ -7,8 +7,9 @@ def to_workflow(other: Union[WorkflowComponent, Workflow]):
 
 
 class Workflow:
-    def __init__(self, component: WorkflowComponent) -> None:
-        self.components: list = [component]
+    def __init__(self, operand: WorkflowComponent) -> None:
+        self.operands: list[WorkflowComponent] = [operand]
+        self.operators: list[str] = []
 
     def __or__(self, other: Union[WorkflowComponent, Workflow]) -> Workflow:
         self.connect(to_workflow(other), operator="|")
@@ -30,7 +31,8 @@ class Workflow:
         other: Workflow,
         operator: str,
     ) -> None:
-        self.components = self.components + [operator] + other.components
+        self.operands += other.operands
+        self.operators += [operator] + other.operators
 
 
 class WorkflowComponent:
