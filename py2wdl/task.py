@@ -1,9 +1,35 @@
 from __future__ import annotations
 import inspect
 from textwrap import dedent
+from itertools import chain
+
 from typing import Optional, Callable, Iterable, Union, Type, Any
 from typing import TypeVar, Generic
 from typing import get_origin, get_args
+
+from .workflow import WorkflowComponent
+
+
+class Tasks(WorkflowComponent):
+    def __init__(self, *tasks: Task):
+        self.tasks: Iterable[Task] = tasks
+    
+    def get_outputs(self) -> list[WDLValue]:
+        return list(chain(*(task.get_outputs() for task in self.tasks)))
+
+
+class ParallelTasks(Tasks): ...
+
+
+class DistributedTasks(Tasks): ...
+
+
+class Values(WorkflowComponent):
+    def __init__(self, *values: WDLValue):
+        self.values: Iterable[WDLValue] = values
+
+    def get_outputs(self) -> list[WDLValue]:
+        return self.values
 
 
 class WDLValue:
@@ -22,17 +48,6 @@ class WDLValue:
     def add_child(self, child_task: Task, input_idx: int) -> None:
         self.children.append((child_task, input_idx))
 
-    def wrap(self) -> Array:
-        self.wrapped = True
-        self.array = Array(
-            element_type=type(self),
-            parent_task=self.parent_task,
-            output_idx=self.output_idx,
-        )
-        return self.array
-
-    def is_wrapped(self) -> bool:
-        return self.wrapped
 
 class Boolean(WDLValue):
     def __init__(
@@ -95,7 +110,7 @@ class Array(WDLValue, Generic[T]):
         return self.element_type
 
 
-class Task:
+class Task(WorkflowComponent):
     def __init__(
         self,
         func: Callable[..., Any],
@@ -103,7 +118,6 @@ class Task:
         input_types: Iterable[Type[WDLValue]] = (),
         output_types: Iterable[Type[WDLValue]] = (),
         meta: dict[str, Any] = {},
-        branch: bool = False,
     ) -> None:
         self.func: Callable[..., Any] = func
         self.name: str = name
@@ -114,16 +128,11 @@ class Task:
         if output_types is not None:
             self.setting_output_values(output_types)
 
-        self.branch: bool = branch
-        self.condition: Condition
-        if branch:
-            if Condition not in output_types:
-                raise TypeError("BranchTask must include a Condition in its output")
-
-            for output in self.outputs:
-                if type(output) is Condition:
-                    self.condition = output
-                    break
+        self.condition: Union[bool, None] = None
+        for output in self.outputs:
+            if type(output) is Condition:
+                self.condition = output
+                break
 
         self.scattered: bool = False
 
@@ -131,7 +140,7 @@ class Task:
         for i, output_type in enumerate(output_types):
             if get_origin(output_type) is Array:
                 element_type = get_args(output_type)[0]
-                output = output_type(
+                output = output_type( 
                     parent_task=self, output_idx=i, element_type=element_type
                 )
             else:
@@ -139,7 +148,7 @@ class Task:
             self.outputs.append(output)
 
     def get_outputs(self) -> list[WDLValue]:
-        if self.branch:
+        if self.condition is not None:
             return [output for output in self.outputs if type(output) != Condition]
         else:
             return self.outputs
@@ -163,79 +172,84 @@ class Task:
                 and not (isinstance(arg, Array) and arg.element_type is get_args(t)[0])
             ):
                 raise TypeError(
-                    f"Expected type {t} on argument {i}, but got {type(arg)}."
+                    f"Expected type {t} on argument {i}, but got {type(arg)}"
                 )
             else:
                 arg.add_child(self, i)
 
         return self.get_outputs()
 
-    def __or__(self, other: Union[Task, list[Task], tuple[Task]]) -> Task:
-        if isinstance(other, Task):
-            other(*self.outputs)
-            if self.is_scattered():
-                other.use_scatter()
-            return other
+    # def __or__(self, other: Union[Task, list[Task], tuple[Task]]) -> Task:
+    #     if isinstance(other, Task):
+    #         other(*self.outputs)
+    #         if self.is_scattered():
+    #             other.use_scatter()
+    #         return other
 
-        elif all(isinstance(task, Task) for task in other):
-            if isinstance(other, list):
-                for task in other:
-                    task(*self.outputs)
-                    if self.is_scattered():
-                        task.use_scatter()
+        # elif all(isinstance(task, Task) for task in other):
+        #     if isinstance(other, list):
+        #         for task in other:
+        #             task(*self.outputs)
+        #             if self.is_scattered():
+        #                 task.use_scatter()
 
-            elif isinstance(other, tuple):
-                i = 0
-                for task in other:
-                    length = len(task.input_types)
-                    task(*self.outputs[i : i + length])
-                    if self.is_scattered():
-                        task.use_scatter()
-                    i += length
+            # elif isinstance(other, tuple):
+            #     i = 0
+            #     for task in other:
+            #         length = len(task.input_types)
+            #         task(*self.outputs[i : i + length])
+            #         if self.is_scattered():
+            #             task.use_scatter()
+            #         i += length
 
-            return other
-        else:
-            raise TypeError(f"Expected Task but got {type(other)}")
+    #         return other
+    #     else:
+    #         raise TypeError(f"Expected Task but got {type(other)}")
 
-    def __ror__(self, other: Union[list[WDLValue], list[Task]]) -> Task:
-        if all(isinstance(value, WDLValue) for value in other):
-            self(*other)
-            return self
+    # def _ror(self, other: Union[list[WDLValue], list[Task]]) -> Task:
+    #     if all(isinstance(value, WDLValue) for value in other):
+    #         self(*other)
+    #         return self
 
-        elif all(isinstance(task, Task) for task in other):
-            values = []
-            for task in other:
-                values.extend(task.get_outputs())
-            self(*values)
-            return self
+    #     elif all(isinstance(task, Task) for task in other):
+    #         values = []
+    #         for task in other:
+    #             values.extend(task.get_outputs())
+    #         self(*values)
+    #         return self
 
-        else:
-            raise TypeError(f"Expected list of Task or WDLValue but got {type(other)}")
+    #     else:
+    #         raise TypeError(f"Expected list of Task or WDLValue but got {type(other)}")
 
-    def __lshift__(self, other: Task) -> Task:
-        if not all(isinstance(value, Array) for value in self.outputs):
-            raise ValueError("All outputs must be of type Array for scatter operation")
+    # def __lshift__(self, other: Task) -> Task:
+    #     if not all(isinstance(value, Array) for value in self.outputs):
+    #         raise ValueError("All outputs must be of type Array for scatter operation")
 
-        outputs = []
-        for output in self.outputs:
-            element = output.element
-            outputs.append(element)
+    #     outputs = []
+    #     for output in self.outputs:
+    #         element = output.element
+    #         outputs.append(element)
 
-        other(*outputs)
-        other.use_scatter()
-        return other
+    #     other(*outputs)
+    #     other.use_scatter()
+    #     return other
 
-    def __rshift__(self, other: Task) -> Task:
-        if not self.is_scattered():
-            raise ValueError("Task must be scattered for gathar operation")
+    # def __rshift__(self, other: Task) -> Task:
+    #     if not self.is_scattered():
+    #         raise ValueError("Task must be scattered for gathar operation")
 
-        other(*[output.wrap() for output in self.outputs])
-        return other
+    #     other(*[output.wrap() for output in self.outputs])
+    #     return other
 
-    def __gt__(self, other: list[Task]) -> list[Task]:
-        outputs = self.get_outputs()
-        for task in other:
-            task(*outputs)
+    # def _lt(self, other: list[Task]) -> list[Task]:
+    #     outputs = self.get_outputs()
+    #     for task in other:
+    #         task(*outputs)
+
+    # def __gt__(self, other: list[Task]) -> list[Task]:
+    #     outputs = self.get_outputs()
+    #     for task in other:
+    #         task(*outputs)
 
     def execute(self, *args: Any, **kwargs: Any) -> Any:
         return self.func(*args, **kwargs)
@@ -257,7 +271,6 @@ def task(
     input_types: Iterable[Type[WDLValue]] = (),
     output_types: Iterable[Type[WDLValue]] = (),
     meta: dict[str, Any] = {},
-    branch: bool = False,
 ) -> Callable[..., Any]:
     def task_factory(func: Callable[..., Any]) -> Task:
         return Task(
@@ -266,13 +279,13 @@ def task(
             input_types=input_types,
             output_types=output_types,
             meta=meta,
-            branch=branch,
         )
 
     return task_factory
 
 
 if __name__ == "__main__":
+    ...
 
     # @task(
     #     input_types=(Int,),
@@ -293,19 +306,19 @@ if __name__ == "__main__":
     # for num in generated_array:
     #     task_b(num)
 
-    @task(output_types=(Array[Int],))
-    def start_task():
-        return [1, 2, 3]
+    # @task(output_types=(Array[Int],))
+    # def start_task():
+    #     return [1, 2, 3]
 
-    @task(
-        input_types=(Int,),
-        output_types=(String,),
-    )
-    def scattered_task(value):
-        return str(value)
+    # @task(
+    #     input_types=(Int,),
+    #     output_types=(String,),
+    # )
+    # def scattered_task(value):
+    #     return str(value)
 
-    @task(input_types=(Array[String],))
-    def gathared_task(array):
-        print(array)
+    # @task(input_types=(Array[String],))
+    # def gathared_task(array):
+    #     print(array)
 
-    start_task << scattered_task >> gathared_task
+    # start_task << scattered_task >> gathared_task
