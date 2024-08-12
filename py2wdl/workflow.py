@@ -1,66 +1,59 @@
-from task import Task
-from typing import Any
+from __future__ import annotations
+from typing import Union
+
+
+def to_workflow(other: Union[WorkflowComponent, Workflow]):
+    return other if isinstance(other, Workflow) else Workflow(other)
+
+
+class Workflow:
+    def __init__(self, operand: WorkflowComponent) -> None:
+        self.operands: list[WorkflowComponent] = [operand]
+        self.operators: list[str] = []
+
+    def __or__(self, other: Union[WorkflowComponent, Workflow]) -> Workflow:
+        self.connect(to_workflow(other), operator="|")
+        return self
+
+    def __lt__(self, other: Union[WorkflowComponent, Workflow]) -> Workflow:
+        self.connect(to_workflow(other), operator="<")
+        return self
+
+    def __lshift__(self, other: Union[WorkflowComponent, Workflow]) -> Workflow:
+        self.connect(to_workflow(other), operator="<<")
+        return self
+
+    def __rshift__(self, other: Union[WorkflowComponent, Workflow]) -> Workflow:
+        self.connect(to_workflow(other), operator=">>")
+        return self
+
+    def connect(
+        self,
+        other: Workflow,
+        operator: str,
+    ) -> None:
+        self.operands += other.operands
+        self.operators += [operator] + other.operators
 
 
 class WorkflowComponent:
-    def __init__(self) -> None:
-        ...
+    def __init__(self):
+        self.scattered: bool = False
     
-    def execute(self) -> Any:
-        ...
+    def is_scattered(self) -> bool:
+        return self.scattered
 
+    def use_scatter(self) -> None:
+        self.scattered = True
 
-class Sequential(WorkflowComponent):
-    def __init__(self, task: Task) -> None:
-        super().__init__()
-        self.task = task
+    def __or__(self, other: Union[WorkflowComponent, Workflow]):
+        return Workflow(self) | to_workflow(other)
+
+    def __lt__(self, other: Union[WorkflowComponent, Workflow]):
+        return Workflow(self) < to_workflow(other)
     
-    def execute(self, *args, **kwargs):
-        return self.task.execute(*args, **kwargs)
-
-
-class Conditional(WorkflowComponent):
-    def __init__(self, tasks: list[Task]) -> None:
-        super().__init__()
-        self.tasks = tasks
+    def __lshift__(self, other: Union[WorkflowComponent, Workflow]):
+        return Workflow(self) << to_workflow(other)
     
-    def execute(self, condition, *args, **kwargs):
-        for task in self.tasks:
-            if condition == task.name:
-                return task.execute(*args, **kwargs)    
-
-
-class Parallel(WorkflowComponent):
-    def __init__(self) -> None:
-        super().__init__()
-
-
-class Scatter(WorkflowComponent):
-    def __init__(self) -> None:
-        super().__init__()
-
-
-class Iterative(WorkflowComponent):
-    def __init__(self) -> None:
-        super().__init__()
-
-
-class TaskNode:
-    def __init__(self, task: Task) -> None:
-        self.task: Task = task
-        self.prev_node: list[TaskNode] = []
-        self.next_nodes: list[TaskNode] = []
-        self.branching: bool = False
-    
-    def execute(self, *args, **kwargs):
-        return self.task.execute(*args, **kwargs)
-
-
-if __name__ == "__main__":
-    from task import task
-
-    @task()
-    def adder(a, b):
-        return a + b
-
-    print(adder)
+    def __rshift__(self, other: Union[WorkflowComponent, Workflow]):
+        return Workflow(self) >> to_workflow(other)

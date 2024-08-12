@@ -1,5 +1,7 @@
 import pytest
 from py2wdl.task import *
+from py2wdl.manager import *
+from py2wdl.workflow import *
 
 
 def test_basic_pipeline():
@@ -11,7 +13,8 @@ def test_basic_pipeline():
     def second(a, b):
         print(a, b)
     
-    first | second
+    manager = WorkflowManager()
+    manager.add_workflow(first | second)
 
     a, b = first.get_outputs()
     assert a.parent_task == first
@@ -37,7 +40,11 @@ def test_value_input():
 
     a, b = Int(1), Int(2)
     
-    [a, b] | print_task
+    manager = WorkflowManager()
+    manager.add_workflow(Values(a, b) | print_task)
+    workflow = Values(a, b) | print_task
+    print(workflow)
+
 
     assert len(a.children) == 1
     assert a.children[0][0] == print_task
@@ -48,7 +55,7 @@ def test_value_input():
     assert b.children[0][1] == 1
 
 
-def test_fan_out_with_list():
+def test_fan_out_with_parallel():
     @task(output_types=(Boolean, File))
     def parent_task():
         return True, "test.txt"
@@ -61,7 +68,8 @@ def test_fan_out_with_list():
     def child_task_b(a, b):
         print(a, b)
     
-    parent_task | [child_task_a, child_task_b]
+    manager = WorkflowManager()
+    manager.add_workflow(parent_task | ParallelTasks(child_task_a, child_task_b))
 
     a, b = parent_task.get_outputs()
     assert a.parent_task == parent_task
@@ -82,7 +90,7 @@ def test_fan_out_with_list():
     assert b.children[1][1] == 1
 
 
-def test_fan_out_with_tuple():
+def test_fan_out_with_distributed():
     @task(output_types=(Int, Boolean))
     def parent_task():
         return 1, False
@@ -94,8 +102,9 @@ def test_fan_out_with_tuple():
     @task(input_types=(Boolean,))
     def child_task_b(value):
         print(value)
-    
-    parent_task | (child_task_a, child_task_b)
+
+    manager = WorkflowManager()
+    manager.add_workflow(parent_task | DistributedTasks(child_task_a, child_task_b))    
 
     a, b = parent_task.get_outputs()
     assert a.parent_task == parent_task
@@ -115,7 +124,6 @@ def test_fan_out_with_tuple():
 def test_branch_pipeline():
     @task(
         output_types=(Int, Condition, Boolean),
-        branch=True
     )
     def branch_task():
         return 1, "child_task_a", True
@@ -127,8 +135,9 @@ def test_branch_pipeline():
     @task(input_types=(Int, Boolean))
     def child_task_b(a, b):
         print(a, b)
-    
-    branch_task > [child_task_a, child_task_b]
+
+    manager = WorkflowManager()
+    manager.add_workflow(branch_task < Tasks(child_task_a, child_task_b))
 
     condition = branch_task.condition
     assert condition.parent_task == branch_task
@@ -151,3 +160,68 @@ def test_branch_pipeline():
     assert b.children[0][1] == 1
     assert b.children[1][0] == child_task_b
     assert b.children[1][1] == 1
+
+
+def test_scatter_pipeline():
+    @task(output_types=(Array[Int],))
+    def start_task():
+        return [1, 2, 3]
+
+    @task(
+        input_types=(Int,),
+        output_types=(String,),
+    )
+    def scattered_task_a(value):
+        return str(value)
+
+    @task(
+        input_types=(String,),
+        output_types=(String,),
+    )
+    def scattered_task_b(value):
+        return value
+
+    @task(input_types=(Array[String],))
+    def gathered_task(array):
+        print(array)
+    
+    manager = WorkflowManager()
+    manager.add_workflow(
+        start_task << scattered_task_a | scattered_task_b >> gathered_task
+    )
+
+    assert not start_task.is_scattered()
+    assert len(start_task.outputs) == 1
+    array = start_task.outputs[0]
+    assert array.parent_task == start_task
+    assert array.output_idx == 0
+    
+    assert len(array.children) == 0
+    assert len(array.element.children) == 1
+    assert array.element.children[0][0] == scattered_task_a
+    assert array.element.children[0][1] == 0
+
+    assert scattered_task_a.is_scattered()
+    assert len(scattered_task_a.outputs) == 1
+    element = scattered_task_a.outputs[0]
+    assert element.parent_task == scattered_task_a
+    assert element.output_idx == 0
+
+    assert not element.is_wrapped()
+    assert len(element.children) == 1
+    assert element.array is None
+    assert element.children[0][0] == scattered_task_b
+    assert element.children[0][1] == 0
+
+    assert scattered_task_b.is_scattered()
+    assert len(scattered_task_b.outputs) == 1
+    element = scattered_task_b.outputs[0]
+    assert element.parent_task == scattered_task_b
+    assert element.output_idx == 0
+
+    assert element.is_wrapped()
+    assert len(element.array.children) == 1
+    assert element.array.children[0][0] == gathered_task
+    assert element.array.children[0][1] == 0
+
+    assert not gathered_task.is_scattered()
