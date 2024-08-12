@@ -12,6 +12,7 @@ from .workflow import WorkflowComponent
 
 class Tasks(WorkflowComponent):
     def __init__(self, *tasks: Task):
+        super().__init__()
         self.tasks: Iterable[Task] = tasks
 
     def __iter__(self) -> Iterator[Task]:
@@ -42,6 +43,7 @@ class DistributedTasks(Tasks):
 
 class Values(WorkflowComponent):
     def __init__(self, *values: WDLValue):
+        super().__init__()
         self.values: Iterable[WDLValue] = values
 
     def __iter__(self) -> Iterator[WDLValue]:
@@ -65,7 +67,7 @@ class WDLValue:
         self.wrapped: bool = False
         self.array: Union[None, Array] = None
 
-    def wrap(self):
+    def wrap(self) -> Array:
         self.wrapped = True
         self.array = Array(
             element_type=type(self),
@@ -73,6 +75,9 @@ class WDLValue:
             output_idx=self.output_idx,
         )
         return self.array
+
+    def is_wrapped(self) -> bool:
+        return self.wrapped
 
     def add_child(self, child_task: Task, input_idx: int) -> None:
         self.children.append((child_task, input_idx))
@@ -153,6 +158,7 @@ class Task(WorkflowComponent):
         meta: dict[str, Any] = {},
     ) -> None:
 
+        super().__init__()
         self.func: Callable[..., Any] = func
         self.name: str = name
         self.meta: Optional[dict[str, Any]] = meta

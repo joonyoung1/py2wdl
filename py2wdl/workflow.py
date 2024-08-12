@@ -13,6 +13,7 @@ class Workflow:
 
     def __or__(self, other: Union[WorkflowComponent, Workflow]) -> Workflow:
         self.connect(to_workflow(other), operator="|")
+        return self
 
     def __lt__(self, other: Union[WorkflowComponent, Workflow]) -> Workflow:
         self.connect(to_workflow(other), operator="<")
