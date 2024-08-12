@@ -36,6 +36,15 @@ class Workflow:
 
 
 class WorkflowComponent:
+    def __init__(self):
+        self.scattered: bool = False
+    
+    def is_scattered(self) -> bool:
+        return self.scattered
+
+    def use_scatter(self) -> None:
+        self.scattered = True
+
     def __or__(self, other: Union[WorkflowComponent, Workflow]):
         return Workflow(self) | to_workflow(other)
 

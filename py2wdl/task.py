@@ -168,8 +168,6 @@ class Task(WorkflowComponent):
                 self.condition = output
                 break
 
-        self.scattered: bool = False
-
     def setting_output_values(self, output_types: Iterable[Type[WDLValue]]) -> None:
         for i, output_type in enumerate(output_types):
             if get_origin(output_type) is Array:
@@ -186,12 +184,6 @@ class Task(WorkflowComponent):
             return [output for output in self.outputs if type(output) != Condition]
         else:
             return self.outputs
-
-    def use_scatter(self):
-        self.scattered = True
-
-    def is_scattered(self):
-        return self.scattered
 
     def __call__(self, *args: WDLValue) -> Union[WDLValue, list[WDLValue]]:
         if len(args) != len(self.input_types):
