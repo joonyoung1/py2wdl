@@ -3,7 +3,7 @@ import inspect
 from textwrap import dedent
 from itertools import chain
 
-from typing import Optional, Callable, Iterable, Union, Type, Any
+from typing import Optional, Callable, Iterable, Iterator, Union, Type, Any
 from typing import TypeVar, Generic
 from typing import get_origin, get_args
 
@@ -13,20 +13,39 @@ from .workflow import WorkflowComponent
 class Tasks(WorkflowComponent):
     def __init__(self, *tasks: Task):
         self.tasks: Iterable[Task] = tasks
-    
+
+    def __iter__(self) -> Iterator[Task]:
+        return iter(self.tasks)
+
     def get_outputs(self) -> list[WDLValue]:
         return list(chain(*(task.get_outputs() for task in self.tasks)))
 
+    def branch(self, values: list[WDLValue]) -> None:
+        for task in self.tasks:
+            task(*values)
 
-class ParallelTasks(Tasks): ...
+
+class ParallelTasks(Tasks):
+    def forward(self, values: list[WDLValue]) -> None:
+        for task in self.tasks:
+            task(*values)
 
 
-class DistributedTasks(Tasks): ...
+class DistributedTasks(Tasks):
+    def forward(self, values: list[WDLValue]) -> None:
+        i = 0
+        for task in self.tasks:
+            length = len(task.input_types)
+            task(*values[i : i + length])
+            i += length
 
 
 class Values(WorkflowComponent):
     def __init__(self, *values: WDLValue):
         self.values: Iterable[WDLValue] = values
+
+    def __iter__(self) -> Iterator[WDLValue]:
+        return iter(self.values)
 
     def get_outputs(self) -> list[WDLValue]:
         return self.values
@@ -38,12 +57,22 @@ class WDLValue:
         parent_task: Optional[Task] = None,
         output_idx: Optional[int] = None,
     ) -> None:
+
         self.name: str = str(id(self))
         self.parent_task: Optional[Task] = parent_task
         self.output_idx: Optional[int] = output_idx
         self.children: list[tuple[Task, int]] = []
         self.wrapped: bool = False
         self.array: Union[None, Array] = None
+
+    def wrap(self):
+        self.wrapped = True
+        self.array = Array(
+            element_type=type(self),
+            parent_task=self.parent_task,
+            output_idx=self.output_idx,
+        )
+        return self.array
 
     def add_child(self, child_task: Task, input_idx: int) -> None:
         self.children.append((child_task, input_idx))
@@ -56,6 +85,7 @@ class Boolean(WDLValue):
         parent_task: Optional[Task] = None,
         output_idx: Optional[int] = None,
     ) -> None:
+
         super().__init__(parent_task, output_idx)
         self.value: Optional[bool] = value
 
@@ -67,6 +97,7 @@ class Int(WDLValue):
         parent_task: Optional[Task] = None,
         output_idx: Optional[int] = None,
     ) -> None:
+
         super().__init__(parent_task, output_idx)
         self.value: Optional[int] = value
 
@@ -78,6 +109,7 @@ class String(WDLValue):
         parent_task: Optional[Task] = None,
         output_idx: Optional[int] = None,
     ) -> None:
+
         super().__init__(parent_task, output_idx)
         self.value: Optional[str] = value
 
@@ -99,9 +131,10 @@ class Array(WDLValue, Generic[T]):
         parent_task: Optional[Task] = None,
         output_idx: Optional[int] = None,
     ) -> None:
+
         super().__init__(parent_task, output_idx)
         self.element_type: Type[WDLValue] = element_type
-        self.value: list[Union[bool, int, str]] = value
+        self.value: list[Union[list, bool, int, str]] = value
         self.element: WDLValue = self.element_type(
             parent_task=parent_task, output_idx=output_idx
         )
@@ -119,6 +152,7 @@ class Task(WorkflowComponent):
         output_types: Iterable[Type[WDLValue]] = (),
         meta: dict[str, Any] = {},
     ) -> None:
+
         self.func: Callable[..., Any] = func
         self.name: str = name
         self.meta: Optional[dict[str, Any]] = meta
@@ -140,7 +174,7 @@ class Task(WorkflowComponent):
         for i, output_type in enumerate(output_types):
             if get_origin(output_type) is Array:
                 element_type = get_args(output_type)[0]
-                output = output_type( 
+                output = output_type(
                     parent_task=self, output_idx=i, element_type=element_type
                 )
             else:
@@ -179,77 +213,18 @@ class Task(WorkflowComponent):
 
         return self.get_outputs()
 
-    # def __or__(self, other: Union[Task, list[Task], tuple[Task]]) -> Task:
-    #     if isinstance(other, Task):
-    #         other(*self.outputs)
-    #         if self.is_scattered():
-    #             other.use_scatter()
-    #         return other
+    def forward(self, values: list[WDLValue]) -> None:
+        self(*values)
 
-        # elif all(isinstance(task, Task) for task in other):
-        #     if isinstance(other, list):
-        #         for task in other:
-        #             task(*self.outputs)
-        #             if self.is_scattered():
-        #                 task.use_scatter()
+    def scatter(self, values: list[WDLValue]) -> None:
+        values = [
+            value.element if isinstance(value, Array) else value for value in values
+        ]
+        self(*values)
 
-            # elif isinstance(other, tuple):
-            #     i = 0
-            #     for task in other:
-            #         length = len(task.input_types)
-            #         task(*self.outputs[i : i + length])
-            #         if self.is_scattered():
-            #             task.use_scatter()
-            #         i += length
-
-    #         return other
-    #     else:
-    #         raise TypeError(f"Expected Task but got {type(other)}")
-
-    # def _ror(self, other: Union[list[WDLValue], list[Task]]) -> Task:
-    #     if all(isinstance(value, WDLValue) for value in other):
-    #         self(*other)
-    #         return self
-
-    #     elif all(isinstance(task, Task) for task in other):
-    #         values = []
-    #         for task in other:
-    #             values.extend(task.get_outputs())
-    #         self(*values)
-    #         return self
-
-    #     else:
-    #         raise TypeError(f"Expected list of Task or WDLValue but got {type(other)}")
-
-    # def __lshift__(self, other: Task) -> Task:
-    #     if not all(isinstance(value, Array) for value in self.outputs):
-    #         raise ValueError("All outputs must be of type Array for scatter operation")
-
-    #     outputs = []
-    #     for output in self.outputs:
-    #         element = output.element
-    #         outputs.append(element)
-
-    #     other(*outputs)
-    #     other.use_scatter()
-    #     return other
-
-    # def __rshift__(self, other: Task) -> Task:
-    #     if not self.is_scattered():
-    #         raise ValueError("Task must be scattered for gathar operation")
-
-    #     other(*[output.wrap() for output in self.outputs])
-    #     return other
-
-    # def _lt(self, other: list[Task]) -> list[Task]:
-    #     outputs = self.get_outputs()
-    #     for task in other:
-    #         task(*outputs)
-
-    # def __gt__(self, other: list[Task]) -> list[Task]:
-    #     outputs = self.get_outputs()
-    #     for task in other:
-    #         task(*outputs)
+    def gather(self, values: list[WDLValue]) -> None:
+        values = [value.wrap() for value in values]
+        self(*values)
 
     def execute(self, *args: Any, **kwargs: Any) -> Any:
         return self.func(*args, **kwargs)
@@ -272,6 +247,7 @@ def task(
     output_types: Iterable[Type[WDLValue]] = (),
     meta: dict[str, Any] = {},
 ) -> Callable[..., Any]:
+
     def task_factory(func: Callable[..., Any]) -> Task:
         return Task(
             func=func,
@@ -282,43 +258,3 @@ def task(
         )
 
     return task_factory
-
-
-if __name__ == "__main__":
-    ...
-
-    # @task(
-    #     input_types=(Int,),
-    #     output_types=(Array[Int],),
-    # )
-    # def task_a(num: int):
-    #     my_array = [i for i in range(num)]
-    #     return my_array
-
-    # @task(
-    #     input_types=(Int,),
-    # )
-    # def task_b(num: int):
-    #     print(num)
-
-    # task_a_input = Int(value=10)
-    # generated_array = task_a(task_a_input)
-    # for num in generated_array:
-    #     task_b(num)
-
-    # @task(output_types=(Array[Int],))
-    # def start_task():
-    #     return [1, 2, 3]
-
-    # @task(
-    #     input_types=(Int,),
-    #     output_types=(String,),
-    # )
-    # def scattered_task(value):
-    #     return str(value)
-
-    # @task(input_types=(Array[String],))
-    # def gathared_task(array):
-    #     print(array)
-
-    # start_task << scattered_task >> gathared_task
