@@ -7,34 +7,25 @@ from .task import Task
 
 class Translator:
     def create_runnable_script(self, task: Task) -> None:
-        func_source = self.get_func_source(task)
-        func_names = self.extract_names(func_source)
-        file_source = self.get_file_source(task.func)
-        needed_imports = self.extract_needed_imports(file_source, func_names)
-        self.write_script(task.name, needed_imports, func_source)
-
-    def get_func_source(self, task: Task) -> str:
         func_source = inspect.getsourcelines(task.func)[0]
         for i, line in enumerate(func_source):
             if line.strip().startswith("def "):
-                return dedent("".join(func_source[i:])).strip()
-        raise ValueError("Function definition not found in source lines.")
+                func_source = dedent("".join(func_source[i:])).strip()
+                break
+        else:
+            raise ValueError("Function definition not found in source lines.")
 
-    def extract_names(self, func_source: str) -> set[str]:
         func_tree = ast.parse(func_source)
-        return {node.id for node in ast.walk(func_tree) if isinstance(node, ast.Name)}
+        func_names = {
+            node.id for node in ast.walk(func_tree) if isinstance(node, ast.Name)
+        }
 
-    def get_file_source(self, func) -> str:
-        file_path = inspect.getfile(func)
+        file_path = inspect.getfile(task.func)
         with open(file_path, "r") as file:
-            return file.read()
-
-    def extract_needed_imports(
-        self, file_source: str, func_names: set[str]
-    ) -> list[str]:
+            file_source = file.read()
         file_tree = ast.parse(file_source)
-        needed_imports = []
 
+        needed_imports = []
         for node in file_tree.body:
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -51,13 +42,17 @@ class Translator:
                         alias.name for alias in node.names
                     )
                     needed_imports.append(import_stmt)
+        if "import sys" not in needed_imports:
+            needed_imports.append("import sys")
+        import_block = "\n".join(needed_imports) + "\n\n\n" if needed_imports else ""
 
-        return needed_imports
+        main_block = dedent(
+            f"""\n\n
+            if __name__ == "__main__":
+                {task.name}(*sys.argv[1:])
+            """
+        )
 
-    def write_script(
-        self, task_name: str, needed_imports: list[str], func_source: str
-    ) -> None:
-        import_part = "\n".join(needed_imports) + "\n\n\n" if needed_imports else ""
-        script_content = import_part + func_source
-        with open(f"./{task_name}.py", "w") as file:
+        script_content = import_block + func_source + main_block
+        with open(f"./{task.name}.py", "w") as file:
             file.write(script_content)
