@@ -107,6 +107,18 @@ class Int(WDLValue):
         self.value: Optional[int] = value
 
 
+class Float(WDLValue):
+    def __init__(
+        self,
+        value: Optional[float] = None,
+        parent_task: Optional[Task] = None,
+        output_idx: Optional[int] = None,
+    ) -> None:
+
+        super().__init__(parent_task, output_idx)
+        self.value: Optional[float] = value
+
+
 class String(WDLValue):
     def __init__(
         self,

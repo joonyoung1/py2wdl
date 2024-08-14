@@ -2,7 +2,7 @@ import ast
 import inspect
 from textwrap import dedent
 
-from .task import Task
+from .task import Task, Int, Float, Boolean
 
 
 class Translator:
@@ -25,6 +25,31 @@ class Translator:
             file_source = file.read()
         file_tree = ast.parse(file_source)
 
+        needed_imports = self.parse_needed_imports(file_tree, func_names)
+        if "import sys" not in needed_imports:
+            needed_imports.append("import sys")
+        import_block = "\n".join(needed_imports) + "\n\n\n" if needed_imports else ""
+
+        main_block = '\n\n\nif __name__ == "__main__":\n'
+        for i, input_type in enumerate(task.input_types, 1):
+            if input_type == Int:
+                main_block += f"\tsys.args[{i}] = int(sys.args[{i}])\n"
+            elif input_type == Float:
+                main_block += f"\tsys.args[{i}] = float(sys.args[{i}])\n"
+            elif input_type == Boolean:
+                main_block += (
+                    f'\tsys.args[{i}] = True if sys.args[{i}] == "true" else False\n'
+                )
+        main_block += f"\t{task.name}(*sys.args[1:])"
+
+        script_content = import_block + func_source + main_block
+        with open(f"./{task.name}.py", "w") as file:
+            file.write(script_content)
+
+    def parse_needed_imports(
+        self, file_tree: ast.Module, func_names: set[str]
+    ) -> list[str]:
+        
         needed_imports = []
         for node in file_tree.body:
             if isinstance(node, ast.Import):
@@ -34,6 +59,7 @@ class Translator:
                         if alias.asname:
                             import_stmt += f" as {alias.asname}"
                         needed_imports.append(import_stmt)
+
             elif isinstance(node, ast.ImportFrom):
                 if node.module in func_names or any(
                     alias.name in func_names for alias in node.names
@@ -42,17 +68,5 @@ class Translator:
                         alias.name for alias in node.names
                     )
                     needed_imports.append(import_stmt)
-        if "import sys" not in needed_imports:
-            needed_imports.append("import sys")
-        import_block = "\n".join(needed_imports) + "\n\n\n" if needed_imports else ""
 
-        main_block = dedent(
-            f"""\n\n
-            if __name__ == "__main__":
-                {task.name}(*sys.argv[1:])
-            """
-        )
-
-        script_content = import_block + func_source + main_block
-        with open(f"./{task.name}.py", "w") as file:
-            file.write(script_content)
+        return needed_imports
