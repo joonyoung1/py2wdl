@@ -9,7 +9,7 @@ class Translator:
     def __init__(self, indentation: str = "    ") -> None:
         self.indentation: str = indentation
 
-    def create_runnable_script(self, task: Task) -> None:
+    def generate_runnable_script(self, task: Task) -> None:
         func_source = self.parse_func_source(task)
         file_source = self.parse_file_source(task)
         import_block = self.generate_import_block(func_source, file_source)
@@ -83,3 +83,42 @@ class Translator:
                 )
 
         return main_block + self.indentation + f"{task.name}(*sys.args[1:])"
+
+    def generate_task_definition_wdl(self, task: Task) -> None:
+        input_block = self.generate_input_block(task)
+        command_block = self.generate_command_block(task)
+        output_block = self.generate_output_block(task)
+
+        wdl_script = (
+            f"task {task.name} {{\n"
+            f"{self.indentation}input {{\n"
+            f"{input_block}\n"
+            f"{self.indentation}}}\n\n"
+            f"{self.indentation}command {{\n"
+            f"{command_block}\n"
+            f"{self.indentation}}}\n\n"
+            f"{self.indentation}output {{\n"
+            f"{output_block}\n"
+            f"{self.indentation}}}\n"
+            f"}}\n\n"
+        )
+        with open("wdl_script.wdl", "a") as file:
+            file.write(wdl_script)
+
+    def generate_input_block(self, task: Task) -> str:
+        input_lines = [
+            f"{self.indentation * 2}{input_type.repr()} {task.name}_input_{i}"
+            for i, input_type in enumerate(task.input_types)
+        ]
+        return "\n".join(input_lines)
+
+    def generate_command_block(self, task: Task) -> str:
+        command_args = " ".join(f"${{{task.name}_input_{i}}}" for i in range(len(task.input_types)))
+        return f"{self.indentation * 2}python {task.name}.py {command_args}"
+
+    def generate_output_block(self, task: Task) -> str:
+        output_lines = [
+            f"{self.indentation * 2}{output_type.repr()} {task.name}_output_{i}"
+            for i, output_type in enumerate(task.outputs)
+        ]
+        return "\n".join(output_lines)

@@ -93,6 +93,10 @@ class Boolean(WDLValue):
 
         super().__init__(parent_task, output_idx)
         self.value: Optional[bool] = value
+    
+    @classmethod
+    def repr(cls):
+        return "Boolean"
 
 
 class Int(WDLValue):
@@ -106,6 +110,10 @@ class Int(WDLValue):
         super().__init__(parent_task, output_idx)
         self.value: Optional[int] = value
 
+    @classmethod
+    def repr(cls):
+        return "Int"
+
 
 class Float(WDLValue):
     def __init__(
@@ -117,6 +125,10 @@ class Float(WDLValue):
 
         super().__init__(parent_task, output_idx)
         self.value: Optional[float] = value
+    
+    @classmethod
+    def repr(cls):
+        return "Float"
 
 
 class String(WDLValue):
@@ -129,9 +141,16 @@ class String(WDLValue):
 
         super().__init__(parent_task, output_idx)
         self.value: Optional[str] = value
+    
+    @classmethod
+    def repr(cls):
+        return "String"
 
 
-class File(String): ...
+class File(String):
+    @classmethod
+    def repr(cls):
+        return "File"
 
 
 class Condition(String): ...
@@ -180,7 +199,7 @@ class Task(WorkflowComponent):
         if output_types is not None:
             self.setting_output_values(output_types)
 
-        self.condition: Union[bool, None] = None
+        self.condition: Union[WDLValue, None] = None
         for output in self.outputs:
             if type(output) is Condition:
                 self.condition = output
