@@ -1,4 +1,6 @@
-from .workflow import Workflow, WorkflowComponent
+from typing import Union
+
+from .workflow import Workflow, WorkflowComponent, to_workflow
 from .task import Task, Tasks
 from .transloator import Translator
 
@@ -8,7 +10,9 @@ class WorkflowManager:
         self.components: set[WorkflowComponent] = set()
         self.translator = Translator()
 
-    def add_workflow(self, workflow: Workflow) -> None:
+    def add_workflow(self, workflow: Union[Workflow, WorkflowComponent]) -> None:
+        if isinstance(workflow, WorkflowComponent):
+            workflow = to_workflow(workflow)
         self.components.update(workflow.operands)
 
         base = workflow.operands[0]

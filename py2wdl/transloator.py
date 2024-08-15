@@ -6,11 +6,14 @@ from .task import Task, Int, Float, Boolean
 
 
 class Translator:
+    def __init__(self, indentation: str = "    ") -> None:
+        self.indentation: str = indentation
+
     def create_runnable_script(self, task: Task) -> None:
         func_source = self.parse_func_source(task)
         file_source = self.parse_file_source(task)
         import_block = self.generate_import_block(func_source, file_source)
-        main_block = self.generate_main_block()
+        main_block = self.generate_main_block(task)
 
         script_content = import_block + func_source + main_block
         with open(f"./{task.name}.py", "w") as file:
@@ -68,12 +71,15 @@ class Translator:
 
         for i, input_type in enumerate(task.input_types, 1):
             if input_type == Int:
-                main_block += f"\tsys.args[{i}] = int(sys.args[{i}])\n"
+                main_block += self.indentation + f"sys.args[{i}] = int(sys.args[{i}])\n"
             elif input_type == Float:
-                main_block += f"\tsys.args[{i}] = float(sys.args[{i}])\n"
+                main_block += (
+                    self.indentation + f"sys.args[{i}] = float(sys.args[{i}])\n"
+                )
             elif input_type == Boolean:
                 main_block += (
-                    f'\tsys.args[{i}] = True if sys.args[{i}] == "true" else False\n'
+                    self.indentation
+                    + f'sys.args[{i}] = True if sys.args[{i}] == "true" else False\n'
                 )
 
-        return main_block + f"\t{task.name}(*sys.args[1:])"
+        return main_block + self.indentation + f"{task.name}(*sys.args[1:])"

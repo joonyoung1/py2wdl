@@ -1,4 +1,6 @@
 import pytest
+import os
+
 from py2wdl.task import *
 from py2wdl.manager import *
 from py2wdl.workflow import *
@@ -225,3 +227,21 @@ def test_scatter_pipeline():
     assert element.array.children[0][1] == 0
 
     assert not gathered_task.is_scattered()
+
+
+def test_task_to_runnable_script():
+    @task(input_types=(Int, Boolean))
+    def my_task(a, b):
+        print(a, b)
+    
+    manager = WorkflowManager()
+    manager.add_workflow(my_task)
+    manager.translate()
+
+    with open("my_task.py", "r") as file:
+        created = file.read()
+    with open("tests/task.to_runnable_script.py", "r") as file:
+        desired = file.read()
+    
+    assert created == desired
+    os.remove("my_task.py")
