@@ -2,13 +2,13 @@ from typing import Union
 
 from .workflow import Workflow, WorkflowComponent, to_workflow
 from .task import Task, Tasks
-from .transloator import Translator
+from .translator import Translator
 
 
 class WorkflowManager:
-    def __init__(self) -> None:
+    def __init__(self, indentation: str = "    ") -> None:
         self.components: set[WorkflowComponent] = set()
-        self.translator = Translator()
+        self.translator: Translator = Translator(indentation=indentation)
 
     def add_workflow(self, workflow: Union[Workflow, WorkflowComponent]) -> None:
         if isinstance(workflow, WorkflowComponent):
@@ -49,7 +49,6 @@ class WorkflowManager:
             base = other
 
     def translate(self) -> None:
-        root_components = []
         for task in self.iterate_over_task():
             self.translator.create_runnable_script(task)
 
