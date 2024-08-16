@@ -82,7 +82,13 @@ class Translator:
                     + f'sys.args[{i}] = True if sys.args[{i}] == "true" else False\n'
                 )
 
-        return main_block + self.indentation + f"{task.name}(*sys.args[1:])"
+        main_block += self.indentation + f"outputs = {task.name}(*sys.args[1:])"
+        main_block += (
+            f"{self.indentation}with open(\"{task.name}.txt\", w) as file"
+            f"{self.indentation * 2}for output in outputs:"
+            f"{self.indentation * 3}file.write(str(output) + \"\\n\")"
+        )
+        return 
 
     def generate_task_definition_wdl(self, task: Task) -> None:
         input_block = self.generate_input_block(task)
