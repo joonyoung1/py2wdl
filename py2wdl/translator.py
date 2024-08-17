@@ -7,7 +7,7 @@ from .task import Task, Int, Float, Boolean
 
 class Translator:
     def __init__(self, indentation: str = "    ") -> None:
-        self.indentation: str = indentation
+        self.ind: str = indentation
 
     def generate_runnable_script(self, task: Task) -> None:
         func_source = self.parse_func_source(task)
@@ -71,24 +71,27 @@ class Translator:
 
         for i, input_type in enumerate(task.input_types, 1):
             if input_type == Int:
-                main_block += self.indentation + f"sys.args[{i}] = int(sys.args[{i}])\n"
+                main_block += self.ind + f"sys.args[{i}] = int(sys.args[{i}])\n"
             elif input_type == Float:
                 main_block += (
-                    self.indentation + f"sys.args[{i}] = float(sys.args[{i}])\n"
+                    self.ind + f"sys.args[{i}] = float(sys.args[{i}])\n"
                 )
             elif input_type == Boolean:
                 main_block += (
-                    self.indentation
+                    self.ind
                     + f'sys.args[{i}] = True if sys.args[{i}] == "true" else False\n'
                 )
 
-        main_block += self.indentation + f"outputs = {task.name}(*sys.args[1:])"
         main_block += (
-            f"{self.indentation}with open(\"{task.name}.txt\", w) as file"
-            f"{self.indentation * 2}for output in outputs:"
-            f"{self.indentation * 3}file.write(str(output) + \"\\n\")"
+            f"{self.ind}outputs = {task.name}(*sys.args[1:])\n\n"
+            f"{self.ind}for i, output in enumerate(outputs):\n"
+            f"{self.ind*2}with open(f\"{task.name}_output_{{i}}.txt\", \"w\") as file:\n"
+            f"{self.ind*3}if isinstance(output, list):\n"
+            f"{self.ind*4}file.write(\"\\n\".join(map(str, output)))\n"
+            f"{self.ind*3}else:\n"
+            f"{self.ind*4}file.write(str(output))\n"
         )
-        return 
+        return main_block
 
     def generate_task_definition_wdl(self, task: Task) -> None:
         input_block = self.generate_input_block(task)
@@ -97,15 +100,15 @@ class Translator:
 
         wdl_script = (
             f"task {task.name} {{\n"
-            f"{self.indentation}input {{\n"
+            f"{self.ind}input {{\n"
             f"{input_block}\n"
-            f"{self.indentation}}}\n\n"
-            f"{self.indentation}command {{\n"
+            f"{self.ind}}}\n\n"
+            f"{self.ind}command {{\n"
             f"{command_block}\n"
-            f"{self.indentation}}}\n\n"
-            f"{self.indentation}output {{\n"
+            f"{self.ind}}}\n\n"
+            f"{self.ind}output {{\n"
             f"{output_block}\n"
-            f"{self.indentation}}}\n"
+            f"{self.ind}}}\n"
             f"}}\n\n"
         )
         with open("wdl_script.wdl", "a") as file:
@@ -113,18 +116,18 @@ class Translator:
 
     def generate_input_block(self, task: Task) -> str:
         input_lines = [
-            f"{self.indentation * 2}{input_type.repr()} {task.name}_input_{i}"
+            f"{self.ind * 2}{input_type.repr()} {task.name}_input_{i}"
             for i, input_type in enumerate(task.input_types)
         ]
         return "\n".join(input_lines)
 
     def generate_command_block(self, task: Task) -> str:
         command_args = " ".join(f"${{{task.name}_input_{i}}}" for i in range(len(task.input_types)))
-        return f"{self.indentation * 2}python {task.name}.py {command_args}"
+        return f"{self.ind * 2}python {task.name}.py {command_args}"
 
     def generate_output_block(self, task: Task) -> str:
         output_lines = [
-            f"{self.indentation * 2}{output_type.repr()} {task.name}_output_{i}"
+            f"{self.ind * 2}{output_type.repr()} {task.name}_output_{i}"
             for i, output_type in enumerate(task.outputs)
         ]
         return "\n".join(output_lines)

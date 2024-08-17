@@ -50,7 +50,7 @@ class WorkflowManager:
 
     def translate(self) -> None:
         for task in self.iterate_over_task():
-            # self.translator.generate_runnable_script(task)
+            self.translator.generate_runnable_script(task)
             self.translator.generate_task_definition_wdl(task)
 
     def iterate_over_task(self):
