@@ -73,9 +73,7 @@ class Translator:
             if input_type == Int:
                 main_block += self.ind + f"sys.args[{i}] = int(sys.args[{i}])\n"
             elif input_type == Float:
-                main_block += (
-                    self.ind + f"sys.args[{i}] = float(sys.args[{i}])\n"
-                )
+                main_block += self.ind + f"sys.args[{i}] = float(sys.args[{i}])\n"
             elif input_type == Boolean:
                 main_block += (
                     self.ind
@@ -85,9 +83,9 @@ class Translator:
         main_block += (
             f"{self.ind}outputs = {task.name}(*sys.args[1:])\n\n"
             f"{self.ind}for i, output in enumerate(outputs):\n"
-            f"{self.ind*2}with open(f\"{task.name}_output_{{i}}.txt\", \"w\") as file:\n"
+            f'{self.ind*2}with open(f"{task.name}_output_{{i}}.txt", "w") as file:\n'
             f"{self.ind*3}if isinstance(output, list):\n"
-            f"{self.ind*4}file.write(\"\\n\".join(map(str, output)))\n"
+            f'{self.ind*4}file.write("\\n".join(map(str, output)))\n'
             f"{self.ind*3}else:\n"
             f"{self.ind*4}file.write(str(output))\n"
         )
@@ -122,12 +120,19 @@ class Translator:
         return "\n".join(input_lines)
 
     def generate_command_block(self, task: Task) -> str:
-        command_args = " ".join(f"${{{task.name}_input_{i}}}" for i in range(len(task.input_types)))
+        command_args = " ".join(
+            f"${{{task.name}_input_{i}}}" for i in range(len(task.input_types))
+        )
         return f"{self.ind * 2}python {task.name}.py {command_args}"
 
     def generate_output_block(self, task: Task) -> str:
-        output_lines = [
-            f"{self.ind * 2}{output_type.repr()} {task.name}_output_{i}"
-            for i, output_type in enumerate(task.outputs)
-        ]
+        output_lines = []
+        for i, output_type in enumerate(task.outputs):
+            var_name = f"{task.name}_output_{i}"
+            type_repr = output_type.repr()
+            line = f"{self.ind*2}{type_repr} {var_name} = read_{type_repr.lower()}({var_name}.txt)"
+            output_lines.append(line)
+
         return "\n".join(output_lines)
+
+    def generate_workflow_definition_wdl(self, task: Task) -> None: ...
