@@ -45,6 +45,8 @@ class WorkflowComponent:
 
     def use_scatter(self) -> None:
         self.scattered = True
+    
+    def create_output_dependencies(self): ...
 
     def __or__(self, other: Union[WorkflowComponent, Workflow]):
         return Workflow(self) | to_workflow(other)

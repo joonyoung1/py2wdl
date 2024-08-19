@@ -18,8 +18,8 @@ class Tasks(WorkflowComponent):
     def __iter__(self) -> Iterator[Task]:
         return iter(self.tasks)
 
-    def get_outputs(self) -> list[Dependency]:
-        return list(chain(*(task.get_outputs() for task in self.tasks)))
+    def create_output_dependencies(self) -> list[Dependency]:
+        return list(chain(*(task.create_output_dependencies() for task in self.tasks)))
 
     def branch(self, values: list[Dependency]) -> None:
         for task in self.tasks:
@@ -27,13 +27,14 @@ class Tasks(WorkflowComponent):
 
 
 class ParallelTasks(Tasks):
-    def forward(self, values: list[Dependency]) -> None:
+    def forward(self, other: WorkflowComponent) -> None:
         for task in self.tasks:
-            task(*values)
+            task(*other.create_output_dependencies())
 
 
 class DistributedTasks(Tasks):
-    def forward(self, values: list[Dependency]) -> None:
+    def forward(self, other: WorkflowComponent) -> None:
+        values = other.create_output_dependencies()
         i = 0
         for task in self.tasks:
             length = len(task.input_types)
@@ -49,7 +50,7 @@ class Values(WorkflowComponent):
     def __iter__(self) -> Iterator[Dependency]:
         return iter(self.values)
 
-    def get_outputs(self) -> list[Dependency]:
+    def create_output_dependencies(self) -> list[Dependency]:
         return self.values
 
 
@@ -201,8 +202,8 @@ class Task(WorkflowComponent):
         self.input_types: Iterable[Type[Dependency]] = input_types
         self.output_types: Iterable[Type[Dependency]] = output_types
 
-        self.inputs: list[Dependency] = []
-        self.outputs: list[Dependency] = []
+        self.inputs: list[list[Dependency]] = [[] for _ in range(len(self.input_types))]
+        self.outputs: list[list[Dependency]] = [[] for _ in range(len(self.output_types))]
 
         self.condition: Union[Dependency, None] = None
         for output in self.outputs:
@@ -210,7 +211,7 @@ class Task(WorkflowComponent):
                 self.condition = output
                 break
 
-    def get_outputs(self) -> list[Dependency]:
+    def create_output_dependencies(self) -> list[Dependency]:
         outputs = []
         for i, output_type in enumerate(self.output_types):
             if output_type is Condition:
@@ -221,10 +222,10 @@ class Task(WorkflowComponent):
                     parent_task=self, output_idx=i, element_type=element_type
                 )
             else:
-                output = output_type(parent_task=self, ouput_idx=i)
+                output = output_type(parent_task=self, output_idx=i)
             outputs.append(output)
+            self.outputs[i].append(output)
         
-        self.outputs.extend(outputs)
         return outputs
 
     def __call__(self, *args: Dependency) -> Union[Dependency, list[Dependency]]:
@@ -244,12 +245,12 @@ class Task(WorkflowComponent):
                 )
             else:
                 arg.set_child(self, i)
-                self.inputs.append(arg)
+                self.inputs[i].append(arg)
 
-        return self.get_outputs()
+        return self.create_output_dependencies()
 
-    def forward(self, values: list[Dependency]) -> None:
-        self(*values)
+    def forward(self, other: WorkflowComponent) -> None:
+        self(*other.create_output_dependencies())
 
     def scatter(self, values: list[Dependency]) -> None:
         values = [

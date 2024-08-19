@@ -17,12 +17,10 @@ class WorkflowManager:
 
         base = workflow.operands[0]
         for other, operator in zip(workflow.operands[1:], workflow.operators):
-            outputs = base.get_outputs()
-
             if operator == "|":
                 if base.is_scattered():
                     other.use_scatter()
-                other.forward(outputs)
+                other.forward(base)
 
             elif operator == "<":
                 if base.is_scattered():
@@ -31,18 +29,18 @@ class WorkflowManager:
                     raise ValueError(
                         "Task need to return Condition for branch operation"
                     )
-                other.branch(outputs)
+                other.branch(base)
 
             elif operator == "<<":
                 other.use_scatter()
-                other.scatter(outputs)
+                other.scatter(base)
 
             elif operator == ">>":
                 if not base.is_scattered():
                     raise ValueError(
                         f"WorkflowComponent need to be scattered for gather operation"
                     )
-                other.gather(outputs)
+                other.gather(base)
             else:
                 raise ValueError(f"Unsupported operator")
 

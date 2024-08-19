@@ -18,21 +18,30 @@ def test_basic_pipeline():
     manager = WorkflowManager()
     manager.add_workflow(first | second)
 
-    a, b = first.get_outputs()
-    assert a.parent_task == first
-    assert a.output_idx == 0
-    assert b.parent_task == first
-    assert b.output_idx == 1
+    assert len(first.outputs[0]) == 1
+    assert len(first.outputs[1]) == 1
 
-    assert len(a.children) == 1
-    a_child = a.children[0]
-    assert a_child[0] == second
-    assert a_child[1] == 0
+    first_output_a = first.outputs[0][0]
+    first_output_b = first.outputs[1][0]
 
-    assert len(b.children) == 1
-    b_child = b.children[0]
-    assert b_child[0] == second
-    assert b_child[1] == 1
+    assert first_output_a.parent_task == first
+    assert first_output_a.output_idx == 0
+    assert first_output_a.child_task == second
+    assert first_output_a.input_idx == 0
+
+    assert first_output_b.parent_task == first
+    assert first_output_b.output_idx == 1
+    assert first_output_b.child_task == second
+    assert first_output_b.input_idx == 1
+
+    assert len(second.inputs[0]) == 1
+    assert len(second.inputs[1]) == 1
+
+    second_input_a = second.inputs[0][0]
+    second_input_b = second.inputs[1][0]
+
+    assert first_output_a == second_input_a
+    assert first_output_b == second_input_b
 
 
 def test_value_input():
@@ -44,17 +53,22 @@ def test_value_input():
     
     manager = WorkflowManager()
     manager.add_workflow(Values(a, b) | print_task)
-    workflow = Values(a, b) | print_task
-    print(workflow)
 
+    assert len(print_task.inputs[0]) == 1
+    assert len(print_task.inputs[1]) == 1
 
-    assert len(a.children) == 1
-    assert a.children[0][0] == print_task
-    assert a.children[0][1] == 0
+    print_input_a = print_task.inputs[0][0]
+    print_input_b = print_task.inputs[1][0]
 
-    assert len(b.children) == 1
-    assert b.children[0][0] == print_task
-    assert b.children[0][1] == 1
+    assert print_input_a.parent_task is None
+    assert print_input_a.output_idx is None
+    assert print_input_a.child_task == print_task
+    assert print_input_a.input_idx == 0
+
+    assert print_input_b.parent_task is None
+    assert print_input_b.output_idx is None
+    assert print_input_b.child_task == print_task
+    assert print_input_b.input_idx == 1
 
 
 def test_fan_out_with_parallel():
@@ -73,23 +87,38 @@ def test_fan_out_with_parallel():
     manager = WorkflowManager()
     manager.add_workflow(parent_task | ParallelTasks(child_task_a, child_task_b))
 
-    a, b = parent_task.get_outputs()
-    assert a.parent_task == parent_task
-    assert a.output_idx == 0
-    assert b.parent_task == parent_task
-    assert b.output_idx == 1
+    assert len(parent_task.outputs[0]) == 2
+    assert len(parent_task.outputs[1]) == 2
 
-    assert len(a.children) == 2
-    assert a.children[0][0] == child_task_a
-    assert a.children[0][1] == 0
-    assert a.children[1][0] == child_task_b
-    assert a.children[1][1] == 0
+    assert parent_task.outputs[0][0].parent_task == parent_task
+    assert parent_task.outputs[0][0].output_idx == 0
+    assert parent_task.outputs[0][0].child_task == child_task_a
+    assert parent_task.outputs[0][0].input_idx == 0
 
-    assert len(b.children) == 2
-    assert b.children[0][0] == child_task_a
-    assert b.children[0][1] == 1
-    assert b.children[1][0] == child_task_b
-    assert b.children[1][1] == 1
+    assert parent_task.outputs[0][1].parent_task == parent_task
+    assert parent_task.outputs[0][1].output_idx == 0
+    assert parent_task.outputs[0][1].child_task == child_task_b
+    assert parent_task.outputs[0][1].input_idx == 0
+
+    assert parent_task.outputs[1][0].parent_task == parent_task
+    assert parent_task.outputs[1][0].output_idx == 1
+    assert parent_task.outputs[1][0].child_task == child_task_a
+    assert parent_task.outputs[1][0].input_idx == 1
+
+    assert parent_task.outputs[1][1].parent_task == parent_task
+    assert parent_task.outputs[1][1].output_idx == 1
+    assert parent_task.outputs[1][1].child_task == child_task_b
+    assert parent_task.outputs[1][1].input_idx == 1
+
+    assert len(child_task_a.inputs[0]) == 1
+    assert len(child_task_a.inputs[1]) == 1
+    assert len(child_task_b.inputs[0]) == 1
+    assert len(child_task_b.inputs[1]) == 1
+
+    assert child_task_a.inputs[0][0] == parent_task.outputs[0][0]
+    assert child_task_a.inputs[1][0] == parent_task.outputs[1][0]
+    assert child_task_b.inputs[0][0] == parent_task.outputs[0][1]
+    assert child_task_b.inputs[1][0] == parent_task.outputs[1][1]
 
 
 def test_fan_out_with_distributed():
@@ -108,20 +137,24 @@ def test_fan_out_with_distributed():
     manager = WorkflowManager()
     manager.add_workflow(parent_task | DistributedTasks(child_task_a, child_task_b))    
 
-    a, b = parent_task.get_outputs()
-    assert a.parent_task == parent_task
-    assert a.output_idx == 0
-    assert b.parent_task == parent_task
-    assert b.output_idx == 1
+    assert len(parent_task.outputs[0]) == 1
+    assert len(parent_task.outputs[1]) == 1
 
-    assert len(a.children) == 1
-    assert a.children[0][0] == child_task_a
-    assert a.children[0][1] == 0
-    
-    assert len(b.children) == 1
-    assert b.children[0][0] == child_task_b
-    assert b.children[0][1] == 0
+    assert parent_task.outputs[0][0].parent_task == parent_task
+    assert parent_task.outputs[0][0].output_idx == 0
+    assert parent_task.outputs[0][0].child_task == child_task_a
+    assert parent_task.outputs[0][0].input_idx == 0
 
+    assert parent_task.outputs[1][0].parent_task == parent_task
+    assert parent_task.outputs[1][0].output_idx == 1
+    assert parent_task.outputs[1][0].child_task == child_task_b
+    assert parent_task.outputs[1][0].input_idx == 0
+
+    assert len(child_task_a.inputs[0]) == 1
+    assert len(child_task_b.inputs[0]) == 1
+
+    assert child_task_a.inputs[0][0] == parent_task.outputs[0][0]
+    assert child_task_b.inputs[0][0] == parent_task.outputs[1][0]
 
 def test_branch_pipeline():
     @task(
