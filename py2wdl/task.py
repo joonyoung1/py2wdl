@@ -208,6 +208,10 @@ class Array(Dependency, Generic[T]):
     def get_element_type(self) -> Type[Dependency]:
         return self.element_type
 
+    @classmethod
+    def repr(cls):
+        return "Array"
+
 
 class Task(WorkflowComponent):
     def __init__(

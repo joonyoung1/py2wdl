@@ -138,16 +138,23 @@ class Translator:
         return "\n".join(output_lines)
 
     def generate_workflow_definition_wdl(self, components: set[WorkflowComponent]) -> None:
-        values = []
+        values_list = []
         tasks = []
         for component in components:
             if isinstance(component, Values):
-                values.extend(component.values)
+                values_list.append(component)
             elif isinstance(component, Tasks):
                 tasks.extend(component.tasks)
+            else:
+                tasks.append(component)
         
-        # print(values)
-        # print(tasks)
+        for task in tasks:
+            call_task = (
+                f"{self.ind}call {task.name} {{\n"
+                f"{self.ind*2}input:\n"
+            )
+
         
-        # for value in values:
-        #     print(value.value)
+    def generate_workflow_input_wdl(self, components: list[Values]) -> None:
+        for values in components:
+            ...

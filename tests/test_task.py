@@ -284,5 +284,14 @@ def test_task_to_runnable_script():
 
 
 def test_temp():
+    @task(input_types=(Array[Int], File))
+    def print_task(a, b):
+        print(a, b)
+
     array_var = Array(element_type=Int, value=[1, 2, 3, 4, 5, 6])
     values = Values(array_var, File("test.txt"))
+
+    manager = WorkflowManager()
+    manager.add_workflow(values | print_task)
+    manager.translate()
+    
