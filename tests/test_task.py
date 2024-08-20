@@ -238,43 +238,36 @@ def test_scatter_pipeline():
     )
 
     assert not start_task.is_scattered()
-    assert len(start_task.outputs) == 1
-    array = start_task.outputs[0]
-    assert array.parent_task == start_task
-    assert array.output_idx == 0
-    
-    assert len(array.children) == 0
-    assert len(array.element.children) == 1
-    assert array.element.children[0][0] == scattered_task_a
-    assert array.element.children[0][1] == 0
-
     assert scattered_task_a.is_scattered()
-    assert len(scattered_task_a.outputs) == 1
-    element = scattered_task_a.outputs[0]
-    assert element.parent_task == scattered_task_a
-    assert element.output_idx == 0
-
-    assert not element.is_wrapped()
-    assert len(element.children) == 1
-    assert element.array is None
-    assert element.children[0][0] == scattered_task_b
-    assert element.children[0][1] == 0
-
     assert scattered_task_b.is_scattered()
-    assert len(scattered_task_b.outputs) == 1
-    element = scattered_task_b.outputs[0]
-    assert element.parent_task == scattered_task_b
-    assert element.output_idx == 0
-
-    assert element.is_wrapped()
-    assert len(element.array.children) == 1
-    assert element.array.children[0][0] == gathered_task
-    assert element.array.children[0][1] == 0
-
     assert not gathered_task.is_scattered()
 
+    assert len(start_task.outputs[0]) == 1
+    assert start_task.outputs[0][0].is_scattered()
+    assert start_task.outputs[0][0].parent_task == start_task
+    assert start_task.outputs[0][0].output_idx == 0
+    assert start_task.outputs[0][0].child_task == scattered_task_a
+    assert start_task.outputs[0][0].input_idx == 0
+    assert scattered_task_a.inputs[0][0] == start_task.outputs[0][0]
+    
+    assert len(scattered_task_a.outputs[0]) == 1
+    assert not scattered_task_a.outputs[0][0].is_scattered()
+    assert scattered_task_a.outputs[0][0].parent_task == scattered_task_a
+    assert scattered_task_a.outputs[0][0].output_idx == 0
+    assert scattered_task_a.outputs[0][0].child_task == scattered_task_b
+    assert scattered_task_a.outputs[0][0].input_idx == 0
+    assert scattered_task_b.inputs[0][0] == scattered_task_a.outputs[0][0]
 
-def test_task_to_runnable_script():
+    assert len(scattered_task_b.outputs[0]) == 1
+    assert scattered_task_b.outputs[0][0].is_wrapped()
+    assert scattered_task_b.outputs[0][0].parent_task == scattered_task_b
+    assert scattered_task_b.outputs[0][0].output_idx == 0
+    assert scattered_task_b.outputs[0][0].child_task == gathered_task
+    assert scattered_task_b.outputs[0][0].input_idx == 0
+    assert gathered_task.inputs[0][0] == scattered_task_b.outputs[0][0]
+
+
+def test_task_to_runnable_script(): 
     @task(input_types=(Int, Boolean))
     def my_task(a, b):
         print(a, b)
@@ -289,4 +282,4 @@ def test_task_to_runnable_script():
         desired = file.read()
     
     assert created == desired
-    os.remove("my_task.py")
+    # os.remove("my_task.py")

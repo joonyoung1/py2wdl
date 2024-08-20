@@ -23,13 +23,13 @@ class Tasks(WorkflowComponent):
 
     def branch(self, other: WorkflowComponent) -> None:
         for task in self.tasks:
-            task(*other.create_output_dependencies())
+            task.connect(*other.create_output_dependencies())
 
 
 class ParallelTasks(Tasks):
     def forward(self, other: WorkflowComponent) -> None:
         for task in self.tasks:
-            task(*other.create_output_dependencies())
+            task.connect(*other.create_output_dependencies())
 
 
 class DistributedTasks(Tasks):
@@ -38,7 +38,7 @@ class DistributedTasks(Tasks):
         i = 0
         for task in self.tasks:
             length = len(task.input_types)
-            task(*values[i : i + length])
+            task.connect(*values[i : i + length])
             i += length
 
 
@@ -62,30 +62,32 @@ class Dependency:
         child_task: Optional[Task] = None,
         input_idx: Optional[int] = None,
     ):
-        
+
         self.parent_task: Optional[Task] = parent_task
         self.output_idx: Optional[int] = output_idx
         self.child_task: Optional[Task] = child_task
         self.input_idx: Optional[int] = input_idx
 
         self.wrapped: bool = False
-        self.array: Union[None, Array] = None
+        self.scattered: bool = False
 
     def set_child(self, child_task: Task, input_idx: int) -> None:
         self.child_task = child_task
         self.input_idx = input_idx
 
-    # def wrap(self) -> Array:
-    #     self.wrapped = True
-    #     self.array = Array(
-    #         element_type=type(self),
-    #         parent_task=self.parent_task,
-    #         output_idx=self.output_idx,
-    #     )
-    #     return self.array
+    def wrap(self) -> Array:
+        self.wrapped = True
+        return self
 
-    # def is_wrapped(self) -> bool:
-    #     return self.wrapped
+    def scatter(self) -> Dependency:
+        self.scattered = True
+        return self
+
+    def is_wrapped(self) -> bool:
+        return self.wrapped
+
+    def is_scattered(self) -> bool:
+        return self.scattered
 
 
 class Boolean(Dependency):
@@ -203,7 +205,9 @@ class Task(WorkflowComponent):
         self.output_types: Iterable[Type[Dependency]] = output_types
 
         self.inputs: list[list[Dependency]] = [[] for _ in range(len(self.input_types))]
-        self.outputs: list[list[Dependency]] = [[] for _ in range(len(self.output_types))]
+        self.outputs: list[list[Dependency]] = [
+            [] for _ in range(len(self.output_types))
+        ]
         self.branching: bool = Boolean in output_types
 
     def create_output_dependencies(self) -> list[Dependency]:
@@ -220,10 +224,10 @@ class Task(WorkflowComponent):
                 output = output_type(parent_task=self, output_idx=i)
             outputs.append(output)
             self.outputs[i].append(output)
-        
+
         return outputs
 
-    def __call__(self, *args: Dependency) -> Union[Dependency, list[Dependency]]:
+    def connect(self, *args: Dependency) -> None:
         if len(args) != len(self.input_types):
             raise TypeError(
                 f"Expected {len(self.input_types)} arguments but got {len(args)}"
@@ -231,31 +235,42 @@ class Task(WorkflowComponent):
 
         for i, (arg, t) in enumerate(zip(args, self.input_types)):
             origin = get_origin(t)
-            if (origin is None and not isinstance(arg, t)) or (
-                origin is Array
-                and not (isinstance(arg, Array) and arg.element_type is get_args(t)[0])
-            ):
+            is_array = isinstance(arg, Array)
+
+            if origin is None:
+                valid_arg = isinstance(arg, t) or (
+                    is_array and arg.element_type is t and arg.is_scattered()
+                )
+            elif origin is Array:
+                valid_arg = (is_array and arg.element_type is get_args(t)[0]) or (
+                    not is_array and arg.is_wrapped()
+                )
+
+            if valid_arg:
+                arg.set_child(self, i)
+                self.inputs[i].append(arg)
+            else:
                 raise TypeError(
                     f"Expected type {t} on argument {i}, but got {type(arg)}"
                 )
-            else:
-                arg.set_child(self, i)
-                self.inputs[i].append(arg)
-
+    
+    def __call__(self, *args: Dependency) -> list[Dependency]:
+        self.connect(*args)
         return self.create_output_dependencies()
 
     def forward(self, other: WorkflowComponent) -> None:
-        self(*other.create_output_dependencies())
+        self.connect(*other.create_output_dependencies())
 
-    def scatter(self, values: list[Dependency]) -> None:
+    def scatter(self, other: WorkflowComponent) -> None:
         values = [
-            value.element if isinstance(value, Array) else value for value in values
+            value.scatter() if isinstance(value, Array) else value
+            for value in other.create_output_dependencies()
         ]
-        self(*values)
+        self.connect(*values)
 
-    def gather(self, values: list[Dependency]) -> None:
-        values = [value.wrap() for value in values]
-        self(*values)
+    def gather(self, other: WorkflowComponent) -> None:
+        values = [value.wrap() for value in other.create_output_dependencies()]
+        self.connect(*values)
 
     def execute(self, *args: Any, **kwargs: Any) -> Any:
         return self.func(*args, **kwargs)
