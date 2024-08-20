@@ -174,27 +174,39 @@ def test_branch_pipeline():
     manager = WorkflowManager()
     manager.add_workflow(branch_task < Tasks(child_task_a, child_task_b))
 
-    condition = branch_task.condition
-    assert condition.parent_task == branch_task
-    assert condition.output_idx == 1
+    assert branch_task.branching
+    assert len(branch_task.outputs[0]) == 2
+    assert len(branch_task.outputs[2]) == 2
 
-    a, b = branch_task.get_outputs()
-    assert a.parent_task == branch_task
-    assert a.output_idx == 0
-    assert b.parent_task == branch_task
-    assert b.output_idx == 2
+    assert branch_task.outputs[0][0].parent_task == branch_task
+    assert branch_task.outputs[0][0].output_idx == 0
+    assert branch_task.outputs[0][0].child_task == child_task_a
+    assert branch_task.outputs[0][0].input_idx == 0
 
-    assert len(a.children) == 2
-    assert a.children[0][0] == child_task_a
-    assert a.children[0][1] == 0
-    assert a.children[1][0] == child_task_b
-    assert a.children[1][1] == 0
+    assert branch_task.outputs[0][1].parent_task == branch_task
+    assert branch_task.outputs[0][1].output_idx == 0
+    assert branch_task.outputs[0][1].child_task == child_task_b
+    assert branch_task.outputs[0][1].input_idx == 0
 
-    assert len(b.children) == 2
-    assert b.children[0][0] == child_task_a
-    assert b.children[0][1] == 1
-    assert b.children[1][0] == child_task_b
-    assert b.children[1][1] == 1
+    assert branch_task.outputs[2][0].parent_task == branch_task
+    assert branch_task.outputs[2][0].output_idx == 2
+    assert branch_task.outputs[2][0].child_task == child_task_a
+    assert branch_task.outputs[2][0].input_idx == 1
+
+    assert branch_task.outputs[2][1].parent_task == branch_task
+    assert branch_task.outputs[2][1].output_idx == 2
+    assert branch_task.outputs[2][1].child_task == child_task_b
+    assert branch_task.outputs[2][1].input_idx == 1
+
+    assert len(child_task_a.inputs[0]) == 1
+    assert len(child_task_a.inputs[1]) == 1
+    assert child_task_a.inputs[0][0] == branch_task.outputs[0][0]
+    assert child_task_a.inputs[1][0] == branch_task.outputs[2][0]
+
+    assert len(child_task_b.inputs[0]) == 1
+    assert len(child_task_b.inputs[1]) == 1
+    assert child_task_b.inputs[0][0] == branch_task.outputs[0][1]
+    assert child_task_b.inputs[1][0] == branch_task.outputs[2][1]
 
 
 def test_scatter_pipeline():

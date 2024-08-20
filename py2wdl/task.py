@@ -21,9 +21,9 @@ class Tasks(WorkflowComponent):
     def create_output_dependencies(self) -> list[Dependency]:
         return list(chain(*(task.create_output_dependencies() for task in self.tasks)))
 
-    def branch(self, values: list[Dependency]) -> None:
+    def branch(self, other: WorkflowComponent) -> None:
         for task in self.tasks:
-            task(*values)
+            task(*other.create_output_dependencies())
 
 
 class ParallelTasks(Tasks):
@@ -204,12 +204,7 @@ class Task(WorkflowComponent):
 
         self.inputs: list[list[Dependency]] = [[] for _ in range(len(self.input_types))]
         self.outputs: list[list[Dependency]] = [[] for _ in range(len(self.output_types))]
-
-        self.condition: Union[Dependency, None] = None
-        for output in self.outputs:
-            if type(output) is Condition:
-                self.condition = output
-                break
+        self.branching: bool = Boolean in output_types
 
     def create_output_dependencies(self) -> list[Dependency]:
         outputs = []

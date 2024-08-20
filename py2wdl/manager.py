@@ -25,7 +25,7 @@ class WorkflowManager:
             elif operator == "<":
                 if base.is_scattered():
                     other.use_scatter()
-                if not isinstance(base, Task) or base.condition is None:
+                if not isinstance(base, Task) or not base.branching:
                     raise ValueError(
                         "Task need to return Condition for branch operation"
                     )
