@@ -3,6 +3,8 @@ import inspect
 from textwrap import dedent
 
 from .task import Task, Int, Float, Boolean
+from .task import Values, Tasks
+from .workflow import WorkflowComponent
 
 
 class Translator:
@@ -135,4 +137,17 @@ class Translator:
 
         return "\n".join(output_lines)
 
-    def generate_workflow_definition_wdl(self, task: Task) -> None: ...
+    def generate_workflow_definition_wdl(self, components: set[WorkflowComponent]) -> None:
+        values = []
+        tasks = []
+        for component in components:
+            if isinstance(component, Values):
+                values.extend(component.values)
+            elif isinstance(component, Tasks):
+                tasks.extend(component.tasks)
+        
+        # print(values)
+        # print(tasks)
+        
+        # for value in values:
+        #     print(value.value)

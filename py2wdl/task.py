@@ -43,36 +43,59 @@ class DistributedTasks(Tasks):
 
 
 class Values(WorkflowComponent):
-    def __init__(self, *values: Dependency):
+    def __init__(self, *deps: Dependency):
         super().__init__()
-        self.values: Iterable[Dependency] = values
+        self.values: Iterable[Dependency] = [dep.value for dep in deps]
+        self.output_types: Iterable[Type[Dependency]] = [
+            type(dep) if not isinstance(dep, Array) else Array[dep.element_type]
+            for dep in deps
+        ]
+        self.outputs: list[list[Dependency]] = [
+            [] for _ in range(len(self.output_types))
+        ]
 
     def __iter__(self) -> Iterator[Dependency]:
         return iter(self.values)
 
     def create_output_dependencies(self) -> list[Dependency]:
-        return self.values
+        outputs = []
+        for i, output_type in enumerate(self.output_types):
+            if get_origin(output_type) is Array:
+                element_type = get_args(output_type)[0]
+                output = output_type(
+                    parent=self, output_idx=i, element_type=element_type
+                )
+            else:
+                output = output_type(parent=self, output_idx=i)
+            outputs.append(output)
+            self.outputs[i].append(output)
+        
+        return outputs
 
 
 class Dependency:
     def __init__(
         self,
-        parent_task: Optional[Task] = None,
+        parent: Optional[WorkflowComponent] = None,
         output_idx: Optional[int] = None,
-        child_task: Optional[Task] = None,
+        child: Optional[Task] = None,
         input_idx: Optional[int] = None,
     ):
 
-        self.parent_task: Optional[Task] = parent_task
+        self.parent: Optional[WorkflowComponent] = parent
         self.output_idx: Optional[int] = output_idx
-        self.child_task: Optional[Task] = child_task
+        self.child: Optional[Task] = child
         self.input_idx: Optional[int] = input_idx
 
         self.wrapped: bool = False
         self.scattered: bool = False
 
-    def set_child(self, child_task: Task, input_idx: int) -> None:
-        self.child_task = child_task
+    def set_parent(self, parent: WorkflowComponent, output_idx: int) -> None:
+        self.parent = parent
+        self.output_idx = output_idx
+
+    def set_child(self, child: Task, input_idx: int) -> None:
+        self.child = child
         self.input_idx = input_idx
 
     def wrap(self) -> Array:
@@ -94,11 +117,11 @@ class Boolean(Dependency):
     def __init__(
         self,
         value: Optional[bool] = None,
-        parent_task: Optional[Task] = None,
+        parent: Optional[WorkflowComponent] = None,
         output_idx: Optional[int] = None,
     ) -> None:
 
-        super().__init__(parent_task, output_idx)
+        super().__init__(parent, output_idx)
         self.value: Optional[bool] = value
 
     @classmethod
@@ -110,11 +133,11 @@ class Int(Dependency):
     def __init__(
         self,
         value: Optional[int] = None,
-        parent_task: Optional[Task] = None,
+        parent: Optional[WorkflowComponent] = None,
         output_idx: Optional[int] = None,
     ) -> None:
 
-        super().__init__(parent_task, output_idx)
+        super().__init__(parent, output_idx)
         self.value: Optional[int] = value
 
     @classmethod
@@ -126,11 +149,11 @@ class Float(Dependency):
     def __init__(
         self,
         value: Optional[float] = None,
-        parent_task: Optional[Task] = None,
+        parent: Optional[WorkflowComponent] = None,
         output_idx: Optional[int] = None,
     ) -> None:
 
-        super().__init__(parent_task, output_idx)
+        super().__init__(parent, output_idx)
         self.value: Optional[float] = value
 
     @classmethod
@@ -142,11 +165,11 @@ class String(Dependency):
     def __init__(
         self,
         value: Optional[str] = None,
-        parent_task: Optional[Task] = None,
+        parent: Optional[WorkflowComponent] = None,
         output_idx: Optional[int] = None,
     ) -> None:
 
-        super().__init__(parent_task, output_idx)
+        super().__init__(parent, output_idx)
         self.value: Optional[str] = value
 
     @classmethod
@@ -171,15 +194,15 @@ class Array(Dependency, Generic[T]):
         self,
         element_type: Type[Dependency],
         value: list[Union[bool, int, str]] = [],
-        parent_task: Optional[Task] = None,
+        parent: Optional[WorkflowComponent] = None,
         output_idx: Optional[int] = None,
     ) -> None:
 
-        super().__init__(parent_task, output_idx)
+        super().__init__(parent, output_idx)
         self.element_type: Type[Dependency] = element_type
         self.value: list[Union[list, bool, int, str]] = value
         self.element: Dependency = self.element_type(
-            parent_task=parent_task, output_idx=output_idx
+            parent=parent, output_idx=output_idx
         )
 
     def get_element_type(self) -> Type[Dependency]:
@@ -218,10 +241,10 @@ class Task(WorkflowComponent):
             elif get_origin(output_type) is Array:
                 element_type = get_args(output_type)[0]
                 output = output_type(
-                    parent_task=self, output_idx=i, element_type=element_type
+                    parent=self, output_idx=i, element_type=element_type
                 )
             else:
-                output = output_type(parent_task=self, output_idx=i)
+                output = output_type(parent=self, output_idx=i)
             outputs.append(output)
             self.outputs[i].append(output)
 
@@ -253,7 +276,7 @@ class Task(WorkflowComponent):
                 raise TypeError(
                     f"Expected type {t} on argument {i}, but got {type(arg)}"
                 )
-    
+
     def __call__(self, *args: Dependency) -> list[Dependency]:
         self.connect(*args)
         return self.create_output_dependencies()
