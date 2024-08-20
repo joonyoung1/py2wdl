@@ -18,72 +18,79 @@ class Tasks(WorkflowComponent):
     def __iter__(self) -> Iterator[Task]:
         return iter(self.tasks)
 
-    def get_outputs(self) -> list[WDLValue]:
-        return list(chain(*(task.get_outputs() for task in self.tasks)))
+    def create_output_dependencies(self) -> list[Dependency]:
+        return list(chain(*(task.create_output_dependencies() for task in self.tasks)))
 
-    def branch(self, values: list[WDLValue]) -> None:
+    def branch(self, other: WorkflowComponent) -> None:
         for task in self.tasks:
-            task(*values)
+            task.connect(*other.create_output_dependencies())
 
 
 class ParallelTasks(Tasks):
-    def forward(self, values: list[WDLValue]) -> None:
+    def forward(self, other: WorkflowComponent) -> None:
         for task in self.tasks:
-            task(*values)
+            task.connect(*other.create_output_dependencies())
 
 
 class DistributedTasks(Tasks):
-    def forward(self, values: list[WDLValue]) -> None:
+    def forward(self, other: WorkflowComponent) -> None:
+        values = other.create_output_dependencies()
         i = 0
         for task in self.tasks:
             length = len(task.input_types)
-            task(*values[i : i + length])
+            task.connect(*values[i : i + length])
             i += length
 
 
 class Values(WorkflowComponent):
-    def __init__(self, *values: WDLValue):
+    def __init__(self, *values: Dependency):
         super().__init__()
-        self.values: Iterable[WDLValue] = values
+        self.values: Iterable[Dependency] = values
 
-    def __iter__(self) -> Iterator[WDLValue]:
+    def __iter__(self) -> Iterator[Dependency]:
         return iter(self.values)
 
-    def get_outputs(self) -> list[WDLValue]:
+    def create_output_dependencies(self) -> list[Dependency]:
         return self.values
 
 
-class WDLValue:
+class Dependency:
     def __init__(
         self,
         parent_task: Optional[Task] = None,
         output_idx: Optional[int] = None,
-    ) -> None:
+        child_task: Optional[Task] = None,
+        input_idx: Optional[int] = None,
+    ):
 
-        self.name: str = str(id(self))
         self.parent_task: Optional[Task] = parent_task
         self.output_idx: Optional[int] = output_idx
-        self.children: list[tuple[Task, int]] = []
+        self.child_task: Optional[Task] = child_task
+        self.input_idx: Optional[int] = input_idx
+
         self.wrapped: bool = False
-        self.array: Union[None, Array] = None
+        self.scattered: bool = False
+
+    def set_child(self, child_task: Task, input_idx: int) -> None:
+        self.child_task = child_task
+        self.input_idx = input_idx
 
     def wrap(self) -> Array:
         self.wrapped = True
-        self.array = Array(
-            element_type=type(self),
-            parent_task=self.parent_task,
-            output_idx=self.output_idx,
-        )
-        return self.array
+        return self
+
+    def scatter(self) -> Dependency:
+        self.scattered = True
+        return self
 
     def is_wrapped(self) -> bool:
         return self.wrapped
 
-    def add_child(self, child_task: Task, input_idx: int) -> None:
-        self.children.append((child_task, input_idx))
+    def is_scattered(self) -> bool:
+        return self.scattered
 
 
-class Boolean(WDLValue):
+class Boolean(Dependency):
     def __init__(
         self,
         value: Optional[bool] = None,
@@ -93,13 +100,13 @@ class Boolean(WDLValue):
 
         super().__init__(parent_task, output_idx)
         self.value: Optional[bool] = value
-    
+
     @classmethod
     def repr(cls):
         return "Boolean"
 
 
-class Int(WDLValue):
+class Int(Dependency):
     def __init__(
         self,
         value: Optional[int] = None,
@@ -115,7 +122,7 @@ class Int(WDLValue):
         return "Int"
 
 
-class Float(WDLValue):
+class Float(Dependency):
     def __init__(
         self,
         value: Optional[float] = None,
@@ -125,13 +132,13 @@ class Float(WDLValue):
 
         super().__init__(parent_task, output_idx)
         self.value: Optional[float] = value
-    
+
     @classmethod
     def repr(cls):
         return "Float"
 
 
-class String(WDLValue):
+class String(Dependency):
     def __init__(
         self,
         value: Optional[str] = None,
@@ -141,7 +148,7 @@ class String(WDLValue):
 
         super().__init__(parent_task, output_idx)
         self.value: Optional[str] = value
-    
+
     @classmethod
     def repr(cls):
         return "String"
@@ -156,26 +163,26 @@ class File(String):
 class Condition(String): ...
 
 
-T = TypeVar("T", bound=WDLValue)
+T = TypeVar("T", bound=Dependency)
 
 
-class Array(WDLValue, Generic[T]):
+class Array(Dependency, Generic[T]):
     def __init__(
         self,
-        element_type: Type[WDLValue],
+        element_type: Type[Dependency],
         value: list[Union[bool, int, str]] = [],
         parent_task: Optional[Task] = None,
         output_idx: Optional[int] = None,
     ) -> None:
 
         super().__init__(parent_task, output_idx)
-        self.element_type: Type[WDLValue] = element_type
+        self.element_type: Type[Dependency] = element_type
         self.value: list[Union[list, bool, int, str]] = value
-        self.element: WDLValue = self.element_type(
+        self.element: Dependency = self.element_type(
             parent_task=parent_task, output_idx=output_idx
         )
 
-    def get_element_type(self) -> Type[WDLValue]:
+    def get_element_type(self) -> Type[Dependency]:
         return self.element_type
 
 
@@ -184,8 +191,8 @@ class Task(WorkflowComponent):
         self,
         func: Callable[..., Any],
         name: str,
-        input_types: Iterable[Type[WDLValue]] = (),
-        output_types: Iterable[Type[WDLValue]] = (),
+        input_types: Iterable[Type[Dependency]] = (),
+        output_types: Iterable[Type[Dependency]] = (),
         meta: dict[str, Any] = {},
     ) -> None:
 
@@ -194,35 +201,33 @@ class Task(WorkflowComponent):
         self.name: str = name
         self.meta: Optional[dict[str, Any]] = meta
 
-        self.input_types: Iterable[Type[WDLValue]] = input_types
-        self.outputs: list[WDLValue] = []
-        if output_types is not None:
-            self.setting_output_values(output_types)
+        self.input_types: Iterable[Type[Dependency]] = input_types
+        self.output_types: Iterable[Type[Dependency]] = output_types
 
-        self.condition: Union[WDLValue, None] = None
-        for output in self.outputs:
-            if type(output) is Condition:
-                self.condition = output
-                break
+        self.inputs: list[list[Dependency]] = [[] for _ in range(len(self.input_types))]
+        self.outputs: list[list[Dependency]] = [
+            [] for _ in range(len(self.output_types))
+        ]
+        self.branching: bool = Boolean in output_types
 
-    def setting_output_values(self, output_types: Iterable[Type[WDLValue]]) -> None:
-        for i, output_type in enumerate(output_types):
-            if get_origin(output_type) is Array:
+    def create_output_dependencies(self) -> list[Dependency]:
+        outputs = []
+        for i, output_type in enumerate(self.output_types):
+            if output_type is Condition:
+                continue
+            elif get_origin(output_type) is Array:
                 element_type = get_args(output_type)[0]
                 output = output_type(
                     parent_task=self, output_idx=i, element_type=element_type
                 )
             else:
                 output = output_type(parent_task=self, output_idx=i)
-            self.outputs.append(output)
+            outputs.append(output)
+            self.outputs[i].append(output)
 
-    def get_outputs(self) -> list[WDLValue]:
-        if self.condition is not None:
-            return [output for output in self.outputs if type(output) != Condition]
-        else:
-            return self.outputs
+        return outputs
 
-    def __call__(self, *args: WDLValue) -> Union[WDLValue, list[WDLValue]]:
+    def connect(self, *args: Dependency) -> None:
         if len(args) != len(self.input_types):
             raise TypeError(
                 f"Expected {len(self.input_types)} arguments but got {len(args)}"
@@ -230,30 +235,42 @@ class Task(WorkflowComponent):
 
         for i, (arg, t) in enumerate(zip(args, self.input_types)):
             origin = get_origin(t)
-            if (origin is None and not isinstance(arg, t)) or (
-                origin is Array
-                and not (isinstance(arg, Array) and arg.element_type is get_args(t)[0])
-            ):
+            is_array = isinstance(arg, Array)
+
+            if origin is None:
+                valid_arg = isinstance(arg, t) or (
+                    is_array and arg.element_type is t and arg.is_scattered()
+                )
+            elif origin is Array:
+                valid_arg = (is_array and arg.element_type is get_args(t)[0]) or (
+                    not is_array and arg.is_wrapped()
+                )
+
+            if valid_arg:
+                arg.set_child(self, i)
+                self.inputs[i].append(arg)
+            else:
                 raise TypeError(
                     f"Expected type {t} on argument {i}, but got {type(arg)}"
                 )
-            else:
-                arg.add_child(self, i)
+    
+    def __call__(self, *args: Dependency) -> list[Dependency]:
+        self.connect(*args)
+        return self.create_output_dependencies()
 
-        return self.get_outputs()
+    def forward(self, other: WorkflowComponent) -> None:
+        self.connect(*other.create_output_dependencies())
 
-    def forward(self, values: list[WDLValue]) -> None:
-        self(*values)
-
-    def scatter(self, values: list[WDLValue]) -> None:
+    def scatter(self, other: WorkflowComponent) -> None:
         values = [
-            value.element if isinstance(value, Array) else value for value in values
+            value.scatter() if isinstance(value, Array) else value
+            for value in other.create_output_dependencies()
         ]
-        self(*values)
+        self.connect(*values)
 
-    def gather(self, values: list[WDLValue]) -> None:
-        values = [value.wrap() for value in values]
-        self(*values)
+    def gather(self, other: WorkflowComponent) -> None:
+        values = [value.wrap() for value in other.create_output_dependencies()]
+        self.connect(*values)
 
     def execute(self, *args: Any, **kwargs: Any) -> Any:
         return self.func(*args, **kwargs)
@@ -272,8 +289,8 @@ class Task(WorkflowComponent):
 
 def task(
     name: Optional[str] = None,
-    input_types: Iterable[Type[WDLValue]] = (),
-    output_types: Iterable[Type[WDLValue]] = (),
+    input_types: Iterable[Type[Dependency]] = (),
+    output_types: Iterable[Type[Dependency]] = (),
     meta: dict[str, Any] = {},
 ) -> Callable[..., Any]:
 
