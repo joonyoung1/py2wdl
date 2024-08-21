@@ -105,18 +105,23 @@ class Translator:
             f"{self.ind}}}\n\n"
             f"{self.ind}command {{\n"
             f"{command_block}\n"
-            f"{self.ind}}}\n\n"
-            f"{self.ind}output {{\n"
-            f"{output_block}\n"
             f"{self.ind}}}\n"
-            f"}}\n\n"
         )
+
+        if len(task.output_types) > 0:
+            script += (
+                f"\n{self.ind}output {{\n"
+                f"{output_block}\n"
+                f"{self.ind}}}\n"
+            )
+        script += "}\n\n"
+
         with open("wdl_script.wdl", "a") as file:
             file.write(script)
 
     def generate_input_block(self, task: Task) -> str:
         input_lines = [
-            f"{self.ind * 2}{input_type.repr()} {task.name}_input_{i}"
+            f"{self.ind * 2}{input_type.repr()} input_{i}"
             for i, input_type in enumerate(task.input_types)
         ]
         return "\n".join(input_lines)
