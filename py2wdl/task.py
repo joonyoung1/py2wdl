@@ -241,6 +241,8 @@ class Task(WorkflowComponent):
             [] for _ in range(len(self.output_types))
         ]
         self.branching: bool = Boolean in output_types
+        self.call_script: str = ""
+        self.lv: int = 0
 
     def create_output_dependencies(self) -> list[Dependency]:
         outputs = []

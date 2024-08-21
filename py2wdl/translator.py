@@ -109,11 +109,7 @@ class Translator:
         )
 
         if len(task.output_types) > 0:
-            script += (
-                f"\n{self.ind}output {{\n"
-                f"{output_block}\n"
-                f"{self.ind}}}\n"
-            )
+            script += f"\n{self.ind}output {{\n" f"{output_block}\n" f"{self.ind}}}\n"
         script += "}\n\n"
 
         with open("wdl_script.wdl", "a") as file:
@@ -155,20 +151,38 @@ class Translator:
             else:
                 tasks.append(component)
 
-        script = "workflow my_workflow {\n"
         for task in tasks:
-            input_block = f"{self.ind}call {task.name} {{\n{self.ind*2}input:\n"
+            call_script = f"call {task.name} {{\n{self.ind}input:\n"
 
-            for i, inp in enumerate(task.inputs):
-                input_line = f"{self.ind*3}input_{i} = "
-                if isinstance(inp[0].parent, Task):
-                    input_line += f"{inp[0].parent.name}.output_{inp[0].output_idx},\n"
-                elif isinstance(inp[0].parent, Values):
-                    input_line += f"{inp[0].parent.name}_output_{inp[0].output_idx},\n"
+            if all(len(inp) == 1 for inp in task.inputs):
+                for i, inp in enumerate(task.inputs):
+                    input_line = f"{self.ind*2}input_{i} = "
+                    if isinstance(inp[0].parent, Task):
+                        input_line += (
+                            f"{inp[0].parent.name}.output_{inp[0].output_idx},\n"
+                        )
+                    elif isinstance(inp[0].parent, Values):
+                        input_line += (
+                            f"{inp[0].parent.name}_output_{inp[0].output_idx},\n"
+                        )
 
-                input_block += input_line
-            script += input_block + f"{self.ind}}}\n"
-        script += "}\n"
+                    call_script += input_line
+                task.call_script = call_script + task.call_script
+
+            else:
+                for i, inps in enumerate(task.inputs):
+                    call_script += f"{self.ind*2}input_{i} = {task.name}_input_{i},\n"
+                    
+                    for inp in inps:
+                        if not isinstance(inp.parent, Task):
+                            raise TypeError(
+                                "Inputs from multiple sources must be received through a branched Task."
+                            )
+                        inp.parent.call_script += f"{task.name}_input_{i} = {inp.parent.name}.output_{inp.output_idx}\n"
+
+        script = ""
+        for task in tasks:
+            script += task.call_script + "}\n"
 
         with open("wdl_script.wdl", "a") as file:
             file.write(script)
