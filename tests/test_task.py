@@ -271,7 +271,7 @@ def test_task_to_runnable_script():
         print(a, b)
     
     manager = WorkflowManager()
-    manager.add_workflow(my_task)
+    manager.add_workflow(Values(Int(5), Boolean(True)) | my_task)
     manager.translate()
 
     with open("my_task.py", "r") as file:

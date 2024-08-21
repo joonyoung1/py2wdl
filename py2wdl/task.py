@@ -43,6 +43,8 @@ class DistributedTasks(Tasks):
 
 
 class Values(WorkflowComponent):
+    count = 0
+
     def __init__(self, *deps: Dependency):
         super().__init__()
         self.values: Iterable[Dependency] = [dep.value for dep in deps]
@@ -53,6 +55,9 @@ class Values(WorkflowComponent):
         self.outputs: list[list[Dependency]] = [
             [] for _ in range(len(self.output_types))
         ]
+
+        self.name = f"Values{Values.count}"
+        Values.count += 1
 
     def __iter__(self) -> Iterator[Dependency]:
         return iter(self.values)

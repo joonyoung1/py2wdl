@@ -98,7 +98,7 @@ class Translator:
         command_block = self.generate_command_block(task)
         output_block = self.generate_output_block(task)
 
-        wdl_script = (
+        script = (
             f"task {task.name} {{\n"
             f"{self.ind}input {{\n"
             f"{input_block}\n"
@@ -112,7 +112,7 @@ class Translator:
             f"}}\n\n"
         )
         with open("wdl_script.wdl", "a") as file:
-            file.write(wdl_script)
+            file.write(script)
 
     def generate_input_block(self, task: Task) -> str:
         input_lines = [
@@ -137,7 +137,9 @@ class Translator:
 
         return "\n".join(output_lines)
 
-    def generate_workflow_definition_wdl(self, components: set[WorkflowComponent]) -> None:
+    def generate_workflow_definition_wdl(
+        self, components: set[WorkflowComponent]
+    ) -> None:
         values_list = []
         tasks = []
         for component in components:
@@ -147,14 +149,25 @@ class Translator:
                 tasks.extend(component.tasks)
             else:
                 tasks.append(component)
-        
-        for task in tasks:
-            call_task = (
-                f"{self.ind}call {task.name} {{\n"
-                f"{self.ind*2}input:\n"
-            )
 
-        
+        script = "workflow my_workflow {\n"
+        for task in tasks:
+            input_block = f"{self.ind}call {task.name} {{\n{self.ind*2}input:\n"
+
+            for i, inp in enumerate(task.inputs):
+                input_line = f"{self.ind*3}input_{i} = "
+                if isinstance(inp[0].parent, Task):
+                    input_line += f"{inp[0].parent.name}.output_{inp[0].output_idx},\n"
+                elif isinstance(inp[0].parent, Values):
+                    input_line += f"{inp[0].parent.name}_output_{inp[0].output_idx},\n"
+
+                input_block += input_line
+            script += input_block + f"{self.ind}}}\n"
+        script += "}\n"
+
+        with open("wdl_script.wdl", "a") as file:
+            file.write(script)
+
     def generate_workflow_input_wdl(self, components: list[Values]) -> None:
         for values in components:
             ...
