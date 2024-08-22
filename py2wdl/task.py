@@ -129,10 +129,6 @@ class Boolean(Dependency):
         super().__init__(parent, output_idx)
         self.value: Optional[bool] = value
 
-    @classmethod
-    def repr(cls):
-        return "Boolean"
-
 
 class Int(Dependency):
     def __init__(
@@ -144,10 +140,6 @@ class Int(Dependency):
 
         super().__init__(parent, output_idx)
         self.value: Optional[int] = value
-
-    @classmethod
-    def repr(cls):
-        return "Int"
 
 
 class Float(Dependency):
@@ -161,10 +153,6 @@ class Float(Dependency):
         super().__init__(parent, output_idx)
         self.value: Optional[float] = value
 
-    @classmethod
-    def repr(cls):
-        return "Float"
-
 
 class String(Dependency):
     def __init__(
@@ -177,15 +165,8 @@ class String(Dependency):
         super().__init__(parent, output_idx)
         self.value: Optional[str] = value
 
-    @classmethod
-    def repr(cls):
-        return "String"
 
-
-class File(String):
-    @classmethod
-    def repr(cls):
-        return "File"
+class File(String): ...
 
 
 class Condition(String): ...
@@ -213,9 +194,16 @@ class Array(Dependency, Generic[T]):
     def get_element_type(self) -> Type[Dependency]:
         return self.element_type
 
-    @classmethod
-    def repr(cls):
-        return "Array"
+
+def format_type_hint(type_hint):
+    origin = get_origin(type_hint)
+    args = get_args(type_hint)
+
+    if origin is None:
+        return type_hint.__name__
+    else:
+        formatted_args = ", ".join(arg.__name__ for arg in args)
+        return f"{origin.__name__}[{formatted_args}]"
 
 
 class Task(WorkflowComponent):

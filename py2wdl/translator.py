@@ -2,7 +2,7 @@ import ast
 import inspect
 from textwrap import dedent
 
-from .task import Task, Int, Float, Boolean
+from .task import Task, Int, Float, Boolean, format_type_hint
 from .task import Values, Tasks
 from .workflow import WorkflowComponent
 
@@ -117,23 +117,24 @@ class Translator:
 
     def generate_input_block(self, task: Task) -> str:
         input_lines = [
-            f"{self.ind * 2}{input_type.repr()} input_{i}"
+            f"{self.ind * 2}{format_type_hint(input_type)} input_{i}"
             for i, input_type in enumerate(task.input_types)
         ]
         return "\n".join(input_lines)
 
     def generate_command_block(self, task: Task) -> str:
         command_args = " ".join(
-            f"${{{task.name}_input_{i}}}" for i in range(len(task.input_types))
+            f"${{input_{i}}}" for i in range(len(task.input_types))
         )
         return f"{self.ind * 2}python {task.name}.py {command_args}"
 
     def generate_output_block(self, task: Task) -> str:
         output_lines = []
-        for i, output_type in enumerate(task.outputs):
+        for i, output_type in enumerate(task.output_types):
             var_name = f"{task.name}_output_{i}"
-            type_repr = output_type.repr()
-            line = f"{self.ind*2}{type_repr} {var_name} = read_{type_repr.lower()}({var_name}.txt)"
+            type_repr = format_type_hint(output_type)
+            single_type_repr = output_type.__name__.lower()
+            line = f"{self.ind*2}{type_repr} {var_name} = read_{single_type_repr}({var_name}.txt)"
             output_lines.append(line)
 
         return "\n".join(output_lines)
