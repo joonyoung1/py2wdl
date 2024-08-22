@@ -100,17 +100,11 @@ class Translator:
 
         script = (
             f"task {task.name} {{\n"
-            f"{self.ind}input {{\n"
-            f"{input_block}\n"
-            f"{self.ind}}}\n\n"
-            f"{self.ind}command {{\n"
-            f"{command_block}\n"
-            f"{self.ind}}}\n"
+            f"{input_block}"
+            f"{command_block}"
+            f"{output_block}"
+            f"}}\n"
         )
-
-        if len(task.output_types) > 0:
-            script += f"\n{self.ind}output {{\n" f"{output_block}\n" f"{self.ind}}}\n"
-        script += "}\n\n"
 
         with open("wdl_script.wdl", "a") as file:
             file.write(script)
@@ -120,13 +114,20 @@ class Translator:
             f"{self.ind * 2}{format_type_hint(input_type)} input_{i}"
             for i, input_type in enumerate(task.input_types)
         ]
-        return "\n".join(input_lines)
+
+        if input_lines:
+            joined_lines = '\n'.join(input_lines)
+            input_block = f"{self.ind}input {{\n{joined_lines}\n{self.ind}}}\n"
+        else:
+            input_block = ""
+        return input_block
 
     def generate_command_block(self, task: Task) -> str:
         command_args = " ".join(
             f"${{input_{i}}}" for i in range(len(task.input_types))
         )
-        return f"{self.ind * 2}python {task.name}.py {command_args}"
+        command_line = f"{self.ind * 2}python {task.name}.py {command_args}"
+        return f"{self.ind}command {{\n{command_line}\n{self.ind}}}\n"
 
     def generate_output_block(self, task: Task) -> str:
         output_lines = []
@@ -137,7 +138,12 @@ class Translator:
             line = f"{self.ind*2}{type_repr} {var_name} = read_{single_type_repr}({var_name}.txt)"
             output_lines.append(line)
 
-        return "\n".join(output_lines)
+        if output_lines:
+            joined_lines = '\n'.join(output_lines)
+            output_block = f"{self.ind}output {{\n{joined_lines}\n{self.ind}}}\n"
+        else:
+            output_block = ""
+        return output_block
 
     def generate_workflow_definition_wdl(
         self, components: set[WorkflowComponent]
@@ -153,6 +159,10 @@ class Translator:
                 tasks.append(component)
 
         for task in tasks:
+            if len(task.input_types) == 0:
+                task.call_script = f"call {task.name}\n"
+                continue
+
             call_script = f"call {task.name} {{\n{self.ind}input:\n"
 
             if all(len(inp) == 1 for inp in task.inputs):
