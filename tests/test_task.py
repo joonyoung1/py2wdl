@@ -171,7 +171,7 @@ def test_branch_pipeline():
 
     manager = WorkflowManager()
     manager.add_workflow(branch_task < Tasks(child_a, child_b))
-    manager.translate()
+    # manager.translate()
   
     assert branch_task.branching
     assert len(branch_task.outputs[0]) == 2
@@ -297,4 +297,29 @@ def test_temp():
     manager = WorkflowManager()
     manager.add_workflow(values | print_task)
     # manager.translate()
+
+
+def test_temp2():
+    @task(
+        output_types=(Int, Condition, Boolean),
+    )
+    def branch_task():
+        return 1, "child_a", True
+
+    @task(input_types=(Int, Boolean), output_types=(Int,))
+    def child_a(a, b):
+        return a
     
+    @task(input_types=(Int, Boolean), output_types=(Int,))
+    def child_b(a, b):
+        return a
+    
+    @task(input_types=(Int,))
+    def joined_task(a):
+        print(a)
+
+    manager = WorkflowManager()
+    manager.add_workflow(branch_task < Tasks(child_a, child_b))
+    manager.add_workflow(child_a | joined_task)
+    manager.add_workflow(child_b | joined_task)
+    manager.translate()

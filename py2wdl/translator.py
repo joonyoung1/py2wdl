@@ -148,25 +148,24 @@ class Translator:
     ) -> None:
         self.init_wdl_script()
 
-        values_list = []
-        tasks = []
+        values_list = set()
+        tasks = set()
         for component in components:
             if isinstance(component, Values):
-                values_list.append(component)
+                values_list.add(component)
             elif isinstance(component, Tasks):
-                tasks.extend(component.tasks)
+                tasks.update(component.tasks)
             else:
-                tasks.append(component)
+                tasks.add(component)
 
         self.set_priorities(tasks)
+        tasks = list(tasks)
+        tasks.sort(key=lambda task: task.priority)
         self.set_call_scripts(tasks)
 
         script = ""
         for task in tasks:
-            if task.bracket_opened:
-                script += task.call_script + "}\n"
-            else:
-                script += task.call_script
+            script += task.call_script
 
         with open("wdl_script.wdl", "a") as file:
             file.write(script)
@@ -210,7 +209,6 @@ class Translator:
         for task in tasks:
             if len(task.input_types) == 0:
                 task.call_script = f"call {task.name}\n"
-                task.bracket_opened = False
                 continue
 
             call_script = f"call {task.name} {{\n{self.ind}input:\n"
@@ -228,7 +226,7 @@ class Translator:
                         )
 
                     call_script += input_line
-                task.call_script = call_script + task.call_script
+                task.call_script = call_script + "}\n"
 
             else:
                 for i, inps in enumerate(task.inputs):

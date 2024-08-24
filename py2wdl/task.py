@@ -232,7 +232,6 @@ class Task(WorkflowComponent):
         self.branching: bool = Boolean in output_types
         self.call_script: str = ""
         self.priority: int = -1
-        self.bracket_opened: bool = True
         self.lv: int = 0
 
     def create_output_dependencies(self) -> list[Dependency]:
