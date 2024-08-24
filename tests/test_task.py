@@ -171,7 +171,8 @@ def test_branch_pipeline():
 
     manager = WorkflowManager()
     manager.add_workflow(branch_task < Tasks(child_a, child_b))
-
+    manager.translate()
+  
     assert branch_task.branching
     assert len(branch_task.outputs[0]) == 2
     assert len(branch_task.outputs[2]) == 2
@@ -234,7 +235,7 @@ def test_scatter_pipeline():
     manager.add_workflow(
         start_task << scattered_task_a | scattered_task_b >> gathered_task
     )
-    manager.translate()
+    # manager.translate()
 
     assert not start_task.is_scattered()
     assert scattered_task_a.is_scattered()

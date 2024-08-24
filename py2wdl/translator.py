@@ -116,16 +116,14 @@ class Translator:
         ]
 
         if input_lines:
-            joined_lines = '\n'.join(input_lines)
+            joined_lines = "\n".join(input_lines)
             input_block = f"{self.ind}input {{\n{joined_lines}\n{self.ind}}}\n"
         else:
             input_block = ""
         return input_block
 
     def generate_command_block(self, task: Task) -> str:
-        command_args = " ".join(
-            f"${{input_{i}}}" for i in range(len(task.input_types))
-        )
+        command_args = " ".join(f"${{input_{i}}}" for i in range(len(task.input_types)))
         command_line = f"{self.ind * 2}python {task.name}.py {command_args}"
         return f"{self.ind}command {{\n{command_line}\n{self.ind}}}\n"
 
@@ -139,7 +137,7 @@ class Translator:
             output_lines.append(line)
 
         if output_lines:
-            joined_lines = '\n'.join(output_lines)
+            joined_lines = "\n".join(output_lines)
             output_block = f"{self.ind}output {{\n{joined_lines}\n{self.ind}}}\n"
         else:
             output_block = ""
@@ -148,6 +146,8 @@ class Translator:
     def generate_workflow_definition_wdl(
         self, components: set[WorkflowComponent]
     ) -> None:
+        self.init_wdl_script()
+
         values_list = []
         tasks = []
         for component in components:
@@ -158,9 +158,59 @@ class Translator:
             else:
                 tasks.append(component)
 
+        self.set_priorities(tasks)
+        self.set_call_scripts(tasks)
+
+        script = ""
+        for task in tasks:
+            if task.bracket_opened:
+                script += task.call_script + "}\n"
+            else:
+                script += task.call_script
+
+        with open("wdl_script.wdl", "a") as file:
+            file.write(script)
+    
+    def init_wdl_script(self) -> None:
+        with open("wdl_script.wdl", "w") as file:
+            pass
+
+    def generate_workflow_input_wdl(self, components: list[Values]) -> None:
+        for values in components:
+            ...
+
+    def set_priorities(self, tasks: list[Task]) -> None:
+        while True:
+            updated = False
+            for task in tasks:
+                if task.priority != -1:
+                    continue
+
+                if len(task.inputs) == 0:
+                    task.priority = 0
+                    continue
+
+                task.priority = self.calc_priority(task)
+                updated = True
+            
+            if not updated:
+                break
+    
+    def calc_priority(self, task: Task) -> int:
+        max_priority = -1
+        for input in task.inputs:
+            for dep in input:
+                if dep.parent.priority == -1:
+                    return -1
+                
+                max_priority = max(max_priority, dep.parent.priority)
+        return max_priority + 1
+
+    def set_call_scripts(self, tasks: list[Task]) -> None:
         for task in tasks:
             if len(task.input_types) == 0:
                 task.call_script = f"call {task.name}\n"
+                task.bracket_opened = False
                 continue
 
             call_script = f"call {task.name} {{\n{self.ind}input:\n"
@@ -183,21 +233,10 @@ class Translator:
             else:
                 for i, inps in enumerate(task.inputs):
                     call_script += f"{self.ind*2}input_{i} = {task.name}_input_{i},\n"
-                    
+
                     for inp in inps:
                         if not isinstance(inp.parent, Task):
                             raise TypeError(
                                 "Inputs from multiple sources must be received through a branched Task."
                             )
                         inp.parent.call_script += f"{task.name}_input_{i} = {inp.parent.name}.output_{inp.output_idx}\n"
-
-        script = ""
-        for task in tasks:
-            script += task.call_script + "}\n"
-
-        with open("wdl_script.wdl", "a") as file:
-            file.write(script)
-
-    def generate_workflow_input_wdl(self, components: list[Values]) -> None:
-        for values in components:
-            ...
