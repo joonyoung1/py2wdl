@@ -57,6 +57,7 @@ class Values(WorkflowComponent):
         ]
 
         self.priority = 0
+        self.lv = 0
         self.name = f"Values{Values.count}"
         Values.count += 1
 
@@ -229,10 +230,10 @@ class Task(WorkflowComponent):
         self.outputs: list[list[Dependency]] = [
             [] for _ in range(len(self.output_types))
         ]
-        self.branching: bool = Boolean in output_types
+        self.branching: bool = Condition in output_types
         self.call_script: str = ""
         self.priority: int = -1
-        self.lv: int = 0
+        self.lv: int = -1
 
     def create_output_dependencies(self) -> list[Dependency]:
         outputs = []

@@ -161,7 +161,13 @@ class Translator:
         self.set_priorities(tasks)
         tasks = list(tasks)
         tasks.sort(key=lambda task: task.priority)
+        self.set_levels(tasks)
         self.set_call_scripts(tasks)
+
+        for task in tasks:
+            print(task.name)
+            print(f"priority:{task.priority}")
+            print(f"level:{task.lv}")
 
         script = ""
         for task in tasks:
@@ -204,6 +210,50 @@ class Translator:
                 
                 max_priority = max(max_priority, dep.parent.priority)
         return max_priority + 1
+
+    def set_levels(self, tasks: list[Task]) -> None:
+        while True:
+            updated = False
+            for task in tasks:
+                if task.lv != -1:
+                    continue
+
+                if len(task.inputs) == 0:
+                    task.lv = 0
+                    continue
+
+                task.lv = self.calc_level(task)
+                updated = True
+
+            if not updated:
+                break
+    
+    def calc_level(self, task: Task) -> int:
+        parents = list(set(dep.parent for input in task.inputs for dep in input))
+        if any(parent.branching for parent in parents):
+            for parent in parents:
+                if parent.branching:
+                    print("the level of this task will setted as", parent.lv + 1)
+                    return parent.lv + 1
+
+        elif all(len(input) > 1 for input in task.inputs):
+            if not all(parent.lv == parents[0].lv for parent in parents):
+                raise ValueError("Input sources has different level")
+                return -1
+            return parents[0].lv - 1
+
+        elif task.is_scattered():
+            for parent in parents:
+                if not parent.is_scattered():
+                    return parent.lv + 1
+        
+        elif not task.is_scattered():
+            for parent in parents:
+                if parent.is_scattered():
+                    return parent.lv - 1
+        
+        else:
+            return max(parent.lv for parent in parents)
 
     def set_call_scripts(self, tasks: list[Task]) -> None:
         for task in tasks:
