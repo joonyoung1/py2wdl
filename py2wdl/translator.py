@@ -134,6 +134,9 @@ class Translator:
             var_name = f"{task.name}_output_{i}"
             type_repr = format_type_hint(output_type)
             single_type_repr = output_type.__name__.lower()
+            if single_type_repr == "condition":
+                single_type_repr = "string"
+                type_repr = "String"
             line = f"{self.ind*2}{type_repr} {var_name} = read_{single_type_repr}({var_name}.txt)"
             output_lines.append(line)
 
@@ -158,6 +161,8 @@ class Translator:
                 tasks.add(component)
         self.set_call_scripts(tasks)
 
+        self.generate_workflow_input_wdl(values_list)
+
         contents = self.sort_tasks(tasks)
         script = ""
         for content in contents:
@@ -174,7 +179,12 @@ class Translator:
             else:
                 script += content
 
-        script = "workflow my_workflow {\n" + script + "}\n"
+        script = (
+            "workflow my_workflow {\n"
+            + self.generate_workflow_input_wdl(values_list)
+            + script
+            + "}\n"
+        )
 
         with open("wdl_script.wdl", "a") as file:
             file.write(script)
@@ -182,10 +192,6 @@ class Translator:
     def init_wdl_script(self) -> None:
         with open("wdl_script.wdl", "w") as file:
             pass
-
-    def generate_workflow_input_wdl(self, components: list[Values]) -> None:
-        for values in components:
-            ...
 
     def set_call_scripts(self, tasks: list[Task]) -> None:
         for task in tasks:
@@ -270,11 +276,17 @@ class Translator:
                             idx = contents.index(dep.parent)
                             contents.insert(idx + 1, task)
                             break
-
-                else:
-                    task.lv = parents[0].lv
-                    max_idx = max(contents.index(parent) for parent in parents)
-                    contents.insert(max_idx, task)
+                    else:
+                        task.lv = parents[0].lv
+                        max_idx = max(
+                            (
+                                contents.index(parent)
+                                if not isinstance(parent, Values)
+                                else 0
+                            )
+                            for parent in parents
+                        )
+                        contents.insert(max_idx, task)
 
                 if task.branching:
                     idx = contents.index(task)
@@ -300,3 +312,11 @@ class Translator:
                         idx += 3
 
         return contents
+
+    def generate_workflow_input_wdl(self, components: list[Values]) -> None:
+        input_block = f"{self.ind}input {{\n"
+        for values in components:
+            for i, value in enumerate(values):
+                input_block += f"{self.ind*2}{format_type_hint(type(value))} {values.name}_output_{i} = {value.repr()}\n"
+        input_block += f"{self.ind}}}\n"
+        return input_block

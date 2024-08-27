@@ -47,7 +47,7 @@ class Values(WorkflowComponent):
 
     def __init__(self, *deps: Dependency):
         super().__init__()
-        self.values: Iterable[Dependency] = [dep.value for dep in deps]
+        self.values: Iterable[Dependency] = deps
         self.output_types: Iterable[Type[Dependency]] = [
             type(dep) if not isinstance(dep, Array) else Array[dep.element_type]
             for dep in deps
@@ -56,8 +56,7 @@ class Values(WorkflowComponent):
             [] for _ in range(len(self.output_types))
         ]
 
-        self.priority = 0
-        self.lv = 0
+        self.lv = 1
         self.name = f"Values{Values.count}"
         Values.count += 1
 
@@ -130,6 +129,9 @@ class Boolean(Dependency):
 
         super().__init__(parent, output_idx)
         self.value: Optional[bool] = value
+    
+    def repr(self) -> str:
+        return "true" if self.value else "false"
 
 
 class Int(Dependency):
@@ -142,6 +144,9 @@ class Int(Dependency):
 
         super().__init__(parent, output_idx)
         self.value: Optional[int] = value
+    
+    def repr(self) -> str:
+        return str(self.value)
 
 
 class Float(Dependency):
@@ -154,6 +159,9 @@ class Float(Dependency):
 
         super().__init__(parent, output_idx)
         self.value: Optional[float] = value
+    
+    def repr(self) -> str:
+        return str(self.value)
 
 
 class String(Dependency):
@@ -166,6 +174,9 @@ class String(Dependency):
 
         super().__init__(parent, output_idx)
         self.value: Optional[str] = value
+    
+    def repr(self) -> str:
+        return self.value
 
 
 class File(String): ...
@@ -195,6 +206,9 @@ class Array(Dependency, Generic[T]):
 
     def get_element_type(self) -> Type[Dependency]:
         return self.element_type
+
+    def repr(self) -> str:
+        return "[" + ", ".join(self.value) +  "]"
 
 
 def format_type_hint(type_hint):
@@ -305,17 +319,19 @@ class Task(WorkflowComponent):
     def execute(self, *args: Any, **kwargs: Any) -> Any:
         return self.func(*args, **kwargs)
 
-    def __str__(self) -> str:
-        if self.meta:
-            meta_str = ", ".join(f"{k}={v!r}" for k, v in self.meta.items())
-        func_source = dedent(inspect.getsource(self.func)).strip()
+    # def __str__(self) -> str:
+    #     if self.meta:
+    #         meta_str = ", ".join(f"{k}={v!r}" for k, v in self.meta.items())
+    #     func_source = dedent(inspect.getsource(self.func)).strip()
 
-        return (
-            f"Name: {self.name}\n"
-            + (f"Metadata: ({meta_str})\n" if self.meta else "")
-            + f"Function Source:\n{func_source}"
-        )
+    #     return (
+    #         f"Name: {self.name}\n"
+    #         + (f"Metadata: ({meta_str})\n" if self.meta else "")
+    #         + f"Function Source:\n{func_source}"
+    #     )
 
+    def __repr__(self) -> str:
+        return self.name
 
 def task(
     name: Optional[str] = None,

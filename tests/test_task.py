@@ -301,6 +301,7 @@ def test_temp():
 
 def test_temp2():
     @task(
+        input_types=(Int, Boolean),
         output_types=(Int, Condition, Boolean),
     )
     def branch_task():
@@ -319,7 +320,7 @@ def test_temp2():
         print(a)
 
     manager = WorkflowManager()
-    manager.add_workflow(branch_task < Tasks(child_a, child_b))
+    manager.add_workflow(Values(Int(1), Boolean(True)) | branch_task < Tasks(child_a, child_b))
     manager.add_workflow(child_a | joined_task)
     manager.add_workflow(child_b | joined_task)
     manager.translate()
