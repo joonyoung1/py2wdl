@@ -220,12 +220,13 @@ class Translator:
                     call_script += f"{self.ind*2}input_{i} = {task.name}_input_{i},\n"
 
                     for inp in inps:
+                        print(inp.parent)
                         if not isinstance(inp.parent, Task):
                             raise TypeError(
                                 "Inputs from multiple sources must be received through a branched Task."
                             )
                         inp.parent.call_script += f"{task.name}_input_{i} = {inp.parent.name}.output_{inp.output_idx}\n"
-            task.call_script = call_script + "}\n"
+            task.call_script = call_script + "}\n" + task.call_script
 
     def sort_tasks(self, tasks: list[Task]) -> list[Union[Task, str]]:
         defined_tasks = set()
