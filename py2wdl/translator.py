@@ -1,6 +1,7 @@
 import ast
 import inspect
 from textwrap import dedent
+from typing import Union
 
 from .task import Task, Int, Float, Boolean, format_type_hint
 from .task import Values, Tasks
@@ -146,8 +147,6 @@ class Translator:
     def generate_workflow_definition_wdl(
         self, components: set[WorkflowComponent]
     ) -> None:
-        self.init_wdl_script()
-
         values_list = set()
         tasks = set()
         for component in components:
@@ -157,25 +156,29 @@ class Translator:
                 tasks.update(component.tasks)
             else:
                 tasks.add(component)
-
-        self.set_priorities(tasks)
-        tasks = list(tasks)
-        tasks.sort(key=lambda task: task.priority)
-        self.set_levels(tasks)
         self.set_call_scripts(tasks)
 
-        for task in tasks:
-            print(task.name)
-            print(f"priority:{task.priority}")
-            print(f"level:{task.lv}")
-
+        contents = self.sort_tasks(tasks)
         script = ""
-        for task in tasks:
-            script += task.call_script
+        for content in contents:
+            if isinstance(content, Task):
+                script += (
+                    "\n".join(
+                        [
+                            self.ind * content.lv + line
+                            for line in content.call_script.splitlines()
+                        ]
+                    )
+                    + "\n"
+                )
+            else:
+                script += content
+
+        script = "workflow my_workflow {\n" + script + "}\n"
 
         with open("wdl_script.wdl", "a") as file:
             file.write(script)
-    
+
     def init_wdl_script(self) -> None:
         with open("wdl_script.wdl", "w") as file:
             pass
@@ -183,77 +186,6 @@ class Translator:
     def generate_workflow_input_wdl(self, components: list[Values]) -> None:
         for values in components:
             ...
-
-    def set_priorities(self, tasks: list[Task]) -> None:
-        while True:
-            updated = False
-            for task in tasks:
-                if task.priority != -1:
-                    continue
-
-                if len(task.inputs) == 0:
-                    task.priority = 0
-                    continue
-
-                task.priority = self.calc_priority(task)
-                updated = True
-            
-            if not updated:
-                break
-    
-    def calc_priority(self, task: Task) -> int:
-        max_priority = -1
-        for input in task.inputs:
-            for dep in input:
-                if dep.parent.priority == -1:
-                    return -1
-                
-                max_priority = max(max_priority, dep.parent.priority)
-        return max_priority + 1
-
-    def set_levels(self, tasks: list[Task]) -> None:
-        while True:
-            updated = False
-            for task in tasks:
-                if task.lv != -1:
-                    continue
-
-                if len(task.inputs) == 0:
-                    task.lv = 0
-                    continue
-
-                task.lv = self.calc_level(task)
-                updated = True
-
-            if not updated:
-                break
-    
-    def calc_level(self, task: Task) -> int:
-        parents = list(set(dep.parent for input in task.inputs for dep in input))
-        if any(parent.branching for parent in parents):
-            for parent in parents:
-                if parent.branching:
-                    print("the level of this task will setted as", parent.lv + 1)
-                    return parent.lv + 1
-
-        elif all(len(input) > 1 for input in task.inputs):
-            if not all(parent.lv == parents[0].lv for parent in parents):
-                raise ValueError("Input sources has different level")
-                return -1
-            return parents[0].lv - 1
-
-        elif task.is_scattered():
-            for parent in parents:
-                if not parent.is_scattered():
-                    return parent.lv + 1
-        
-        elif not task.is_scattered():
-            for parent in parents:
-                if parent.is_scattered():
-                    return parent.lv - 1
-        
-        else:
-            return max(parent.lv for parent in parents)
 
     def set_call_scripts(self, tasks: list[Task]) -> None:
         for task in tasks:
@@ -276,7 +208,6 @@ class Translator:
                         )
 
                     call_script += input_line
-                task.call_script = call_script + "}\n"
 
             else:
                 for i, inps in enumerate(task.inputs):
@@ -288,3 +219,84 @@ class Translator:
                                 "Inputs from multiple sources must be received through a branched Task."
                             )
                         inp.parent.call_script += f"{task.name}_input_{i} = {inp.parent.name}.output_{inp.output_idx}\n"
+            task.call_script = call_script + "}\n"
+
+    def sort_tasks(self, tasks: list[Task]) -> list[Union[Task, str]]:
+        defined_tasks = set()
+        contents = []
+
+        while len(defined_tasks) < len(tasks):
+            for task in tasks:
+                deps = [dep for input in task.inputs for dep in input]
+                parents = list(set([dep.parent for dep in deps]))
+                if not all(
+                    isinstance(parent, Values) or parent in defined_tasks
+                    for parent in parents
+                ):
+                    continue
+                elif task in defined_tasks:
+                    continue
+
+                defined_tasks.add(task)
+
+                if len(parents) == 0:
+                    task.lv = 1
+                    contents.insert(0, task)
+
+                elif all(len(input) > 1 for input in task.inputs):
+                    if not all(parent.lv == parents[0].lv for parent in parents):
+                        raise ValueError("Input sources has different level")
+                    task.lv = parents[0].lv - 1
+                    max_idx = max(contents.index(parent) for parent in parents)
+                    contents.insert(max_idx + 2, task)
+
+                elif task.is_scattered():
+                    for dep in deps:
+                        if not dep.parent.is_scattered() and dep.is_scattered():
+                            task.lv = dep.parent.lv + 1
+                            idx = contents.index(dep.parent)
+                            contents.insert(idx + 1, "scatter")
+                            contents.insert(idx + 2, task)
+                            break
+                    else:
+                        max_lv_parent = max(parents, key=lambda x: x.lv)
+                        idx = contents.index(max_lv_parent)
+                        contents.insert(idx, task)
+
+                elif not task.is_scattered():
+                    for dep in deps:
+                        if dep.parent.is_scattered() and dep.is_wrapped():
+                            task.lv = dep.parent.lv - 1
+                            idx = contents.index(dep.parent)
+                            contents.insert(idx + 1, task)
+                            break
+
+                else:
+                    task.lv = parents[0].lv
+                    max_idx = max(contents.index(parent) for parent in parents)
+                    contents.insert(max_idx, task)
+
+                if task.branching:
+                    idx = contents.index(task)
+                    children = set(
+                        dep.child for output in task.outputs for dep in output
+                    )
+
+                    first_line = True
+                    while children:
+                        child = children.pop()
+                        defined_tasks.add(child)
+                        child.lv = task.lv + 1
+
+                        if_state = "if" if first_line else "else if"
+                        first_line = False
+
+                        contents.insert(
+                            idx + 1,
+                            f'{self.ind*task.lv}{if_state} {task.name}.output_{task.cond_idx} == "{child.name}" {{\n',
+                        )
+                        contents.insert(idx + 2, child)
+                        contents.insert(idx + 3, f"{self.ind*task.lv}}}\n")
+                        idx += 3
+
+        return contents

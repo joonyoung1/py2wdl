@@ -47,7 +47,9 @@ class WorkflowManager:
             base = other
 
     def translate(self) -> None:
-        for task in self.iterate_over_task():
+        self.translator.init_wdl_script()
+        for task in list(set(self.iterate_over_task())):
+            print(task.name)
             self.translator.generate_runnable_script(task)
             self.translator.generate_task_definition_wdl(task)
         self.translator.generate_workflow_definition_wdl(self.components)

@@ -231,8 +231,13 @@ class Task(WorkflowComponent):
             [] for _ in range(len(self.output_types))
         ]
         self.branching: bool = Condition in output_types
+        self.cond_idx: int = -1
+        for i, output_type in enumerate(output_types):
+            if output_type == Condition:
+                self.cond_idx = i
+                break
+
         self.call_script: str = ""
-        self.priority: int = -1
         self.lv: int = -1
 
     def create_output_dependencies(self) -> list[Dependency]:
