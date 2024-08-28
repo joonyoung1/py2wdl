@@ -17,30 +17,39 @@ class WorkflowManager:
 
         base = workflow.operands[0]
         for other, operator in zip(workflow.operands[1:], workflow.operators):
-            if operator == "|":
+            if operator == "forward":
                 if base.is_scattered():
                     other.use_scatter()
-                other.forward(base)
+                other._forward(base)
 
-            elif operator == "<":
+            elif operator == "branch":
                 if base.is_scattered():
                     other.use_scatter()
                 if not isinstance(base, Task) or not base.branching:
                     raise ValueError(
                         "Task need to return Condition for branch operation"
                     )
-                other.branch(base)
+                other._branch(base)
+            
+            elif operator == "join":
+                if base.is_scattered():
+                    other.use_scatter()
+                if not isinstance(base, Tasks):
+                    raise ValueError(
+                        "To perform a join operation, the left operand must be of type Tasks"
+                    )
+                other._join(base)
 
-            elif operator == "<<":
+            elif operator == "scatter":
                 other.use_scatter()
-                other.scatter(base)
+                other._scatter(base)
 
-            elif operator == ">>":
+            elif operator == "gather":
                 if not base.is_scattered():
                     raise ValueError(
                         f"WorkflowComponent need to be scattered for gather operation"
                     )
-                other.gather(base)
+                other._gather(base)
             else:
                 raise ValueError(f"Unsupported operator")
 
@@ -48,14 +57,16 @@ class WorkflowManager:
 
     def translate(self) -> None:
         self.translator.init_wdl_script()
-        for task in list(set(self.iterate_over_task())):
+        for task in self.iterate_over_task():
             self.translator.generate_runnable_script(task)
             self.translator.generate_task_definition_wdl(task)
         self.translator.generate_workflow_definition_wdl(self.components)
 
     def iterate_over_task(self):
+        tasks = set()
         for component in self.components:
             if isinstance(component, Task):
-                yield component
+                tasks.add(component)
             elif isinstance(component, Tasks):
-                yield from component
+                tasks.update(component)
+        return sorted(tasks, key=lambda x: x.name)

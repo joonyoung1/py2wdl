@@ -4,6 +4,7 @@ import os
 from py2wdl.task import *
 from py2wdl.manager import *
 from py2wdl.workflow import *
+from py2wdl.operator import *
 
 
 def test_basic_pipeline():
@@ -16,7 +17,7 @@ def test_basic_pipeline():
         print(a, b)
     
     manager = WorkflowManager()
-    manager.add_workflow(first | second)
+    manager.add_workflow(first |f| second)
 
     assert len(first.outputs[0]) == 1
     assert len(first.outputs[1]) == 1
@@ -53,7 +54,7 @@ def test_value_input():
     
     manager = WorkflowManager()
     values = Values(a, b)
-    manager.add_workflow(values | print_task)
+    manager.add_workflow(values |f| print_task)
 
     assert len(print_task.inputs[0]) == 1
     assert len(print_task.inputs[1]) == 1
@@ -83,7 +84,7 @@ def test_fan_out_with_parallel():
         print(a, b)
     
     manager = WorkflowManager()
-    manager.add_workflow(parent | ParallelTasks(child_a, child_b))
+    manager.add_workflow(parent |f| ParallelTasks(child_a, child_b))
 
     assert len(parent.outputs[0]) == 2
     assert len(parent.outputs[1]) == 2
@@ -133,7 +134,7 @@ def test_fan_out_with_distributed():
         print(value)
 
     manager = WorkflowManager()
-    manager.add_workflow(parent | DistributedTasks(child_a, child_b))    
+    manager.add_workflow(parent |f| DistributedTasks(child_a, child_b))    
 
     assert len(parent.outputs[0]) == 1
     assert len(parent.outputs[1]) == 1
@@ -170,8 +171,7 @@ def test_branch_pipeline():
         print(a, b)
 
     manager = WorkflowManager()
-    manager.add_workflow(branch_task < Tasks(child_a, child_b))
-    # manager.translate()
+    manager.add_workflow(branch_task |b| Tasks(child_a, child_b))
   
     assert branch_task.branching
     assert len(branch_task.outputs[0]) == 2
@@ -233,9 +233,8 @@ def test_scatter_pipeline():
     
     manager = WorkflowManager()
     manager.add_workflow(
-        start_task << scattered_task_a | scattered_task_b >> gathered_task
+        start_task |s| scattered_task_a |f| scattered_task_b |g| gathered_task
     )
-    # manager.translate()
 
     assert not start_task.is_scattered()
     assert scattered_task_a.is_scattered()
@@ -273,30 +272,17 @@ def test_task_to_runnable_script():
         print(a, b)
     
     manager = WorkflowManager()
-    manager.add_workflow(Values(Int(5), Boolean(True)) | my_task)
-    # manager.translate()
+    manager.add_workflow(Values(Int(5), Boolean(True)) |f| my_task)
+    manager.translate()
 
-    # with open("my_task.py", "r") as file:
-    #     created = file.read()
-    # with open("tests/task.to_runnable_script.py", "r") as file:
-    #     desired = file.read()
+    with open("my_task.py", "r") as file:
+        created = file.read()
+    with open("tests/test_task_to_runnable_script.py", "r") as file:
+        desired = file.read()
     
-    # assert created == desired
-    # os.remove("my_task.py")
-    # os.remove("wdl_script.wdl")
-
-
-def test_temp():
-    @task(input_types=(Array[Int], File))
-    def print_task(a, b):
-        print(a, b)
-
-    array_var = Array(element_type=Int, value=[1, 2, 3, 4, 5, 6])
-    values = Values(array_var, File("test.txt"))
-
-    manager = WorkflowManager()
-    manager.add_workflow(values | print_task)
-    # manager.translate()
+    assert created == desired
+    os.remove("my_task.py")
+    os.remove("wdl_script.wdl")
 
 
 def test_temp2():
@@ -320,7 +306,15 @@ def test_temp2():
         print(a)
 
     manager = WorkflowManager()
-    manager.add_workflow(Values(Int(1), Boolean(True)) | branch_task < Tasks(child_a, child_b))
-    manager.add_workflow(child_a | joined_task)
-    manager.add_workflow(child_b | joined_task)
+    manager.add_workflow(Values(Int(1), Boolean(True)) |f| branch_task |b| Tasks(child_a, child_b) |j| joined_task)
     manager.translate()
+
+    with open("wdl_script.wdl", "r") as file:
+        created = file.read()
+    with open("tests/test_workflow_to_wdl_script.wdl", "r") as file:
+        desired = file.read()
+    
+    assert created == desired
+    for t in manager.iterate_over_task():
+        os.remove(f"{t.name}.py")
+    os.remove("wdl_script.wdl")

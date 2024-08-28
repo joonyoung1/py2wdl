@@ -11,20 +11,24 @@ class Workflow:
         self.operands: list[WorkflowComponent] = [operand]
         self.operators: list[str] = []
 
-    def __or__(self, other: Union[WorkflowComponent, Workflow]) -> Workflow:
-        self.connect(to_workflow(other), operator="|")
+    def forward(self, other: Union[WorkflowComponent, Workflow]) -> Workflow:
+        self.connect(to_workflow(other), operator="forward")
         return self
 
-    def __lt__(self, other: Union[WorkflowComponent, Workflow]) -> Workflow:
-        self.connect(to_workflow(other), operator="<")
+    def branch(self, other: Union[WorkflowComponent, Workflow]) -> Workflow:
+        self.connect(to_workflow(other), operator="branch")
+        return self
+    
+    def join(self, other: Union[WorkflowComponent, Workflow]) -> Workflow:
+        self.connect(to_workflow(other), operator="join")
         return self
 
-    def __lshift__(self, other: Union[WorkflowComponent, Workflow]) -> Workflow:
-        self.connect(to_workflow(other), operator="<<")
+    def scatter(self, other: Union[WorkflowComponent, Workflow]) -> Workflow:
+        self.connect(to_workflow(other), operator="scatter")
         return self
 
-    def __rshift__(self, other: Union[WorkflowComponent, Workflow]) -> Workflow:
-        self.connect(to_workflow(other), operator=">>")
+    def gather(self, other: Union[WorkflowComponent, Workflow]) -> Workflow:
+        self.connect(to_workflow(other), operator="gather")
         return self
 
     def connect(
@@ -48,14 +52,17 @@ class WorkflowComponent:
     
     def create_output_dependencies(self): ...
 
-    def __or__(self, other: Union[WorkflowComponent, Workflow]):
-        return Workflow(self) | to_workflow(other)
+    def forward(self, other: Union[WorkflowComponent, Workflow]):
+        return Workflow(self).forward(to_workflow(other))
 
-    def __lt__(self, other: Union[WorkflowComponent, Workflow]):
-        return Workflow(self) < to_workflow(other)
+    def branch(self, other: Union[WorkflowComponent, Workflow]):
+        return Workflow(self).branch(to_workflow(other))
+
+    def join(self, other: Union[WorkflowComponent, Workflow]):
+        return Workflow(self).join(to_workflow(other))
     
-    def __lshift__(self, other: Union[WorkflowComponent, Workflow]):
-        return Workflow(self) << to_workflow(other)
+    def scatter(self, other: Union[WorkflowComponent, Workflow]):
+        return Workflow(self).scatter(to_workflow(other))
     
-    def __rshift__(self, other: Union[WorkflowComponent, Workflow]):
-        return Workflow(self) >> to_workflow(other)
+    def gatter(self, other: Union[WorkflowComponent, Workflow]):
+        return Workflow(self).gather(to_workflow(other))
