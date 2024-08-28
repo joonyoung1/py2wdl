@@ -21,19 +21,19 @@ class Tasks(WorkflowComponent):
     def create_output_dependencies(self) -> list[Dependency]:
         return list(chain(*(task.create_output_dependencies() for task in self.tasks)))
 
-    def branch(self, other: WorkflowComponent) -> None:
+    def _branch(self, other: WorkflowComponent) -> None:
         for task in self.tasks:
             task.connect(*other.create_output_dependencies())
 
 
 class ParallelTasks(Tasks):
-    def forward(self, other: WorkflowComponent) -> None:
+    def _forward(self, other: WorkflowComponent) -> None:
         for task in self.tasks:
             task.connect(*other.create_output_dependencies())
 
 
 class DistributedTasks(Tasks):
-    def forward(self, other: WorkflowComponent) -> None:
+    def _forward(self, other: WorkflowComponent) -> None:
         values = other.create_output_dependencies()
         i = 0
         for task in self.tasks:
@@ -302,17 +302,21 @@ class Task(WorkflowComponent):
         self.connect(*args)
         return self.create_output_dependencies()
 
-    def forward(self, other: WorkflowComponent) -> None:
+    def _forward(self, other: WorkflowComponent) -> None:
         self.connect(*other.create_output_dependencies())
+    
+    def _join(self, other: WorkflowComponent) -> None:
+        for t in other:
+            self._forward(t)
 
-    def scatter(self, other: WorkflowComponent) -> None:
+    def _scatter(self, other: WorkflowComponent) -> None:
         values = [
             value.scatter() if isinstance(value, Array) else value
             for value in other.create_output_dependencies()
         ]
         self.connect(*values)
 
-    def gather(self, other: WorkflowComponent) -> None:
+    def _gather(self, other: WorkflowComponent) -> None:
         values = [value.wrap() for value in other.create_output_dependencies()]
         self.connect(*values)
 
