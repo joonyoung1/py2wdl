@@ -262,8 +262,12 @@ class Translator:
                         if not dep.parent.is_scattered() and dep.is_scattered():
                             task.lv = dep.parent.lv + 1
                             idx = contents.index(dep.parent)
-                            contents.insert(idx + 1, "scatter")
+                            contents.insert(
+                                idx + 1,
+                                f"{self.ind*dep.parent.lv}scatter (scattered in {dep.parent.name}.output_{dep.output_idx}) {{\n"
+                            )
                             contents.insert(idx + 2, task)
+                            contents.insert(idx + 3, f"{self.ind*dep.parent.lv}}}\n")
                             break
                     else:
                         max_lv_parent = max(parents, key=lambda x: x.lv)

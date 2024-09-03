@@ -266,7 +266,7 @@ def test_scatter_pipeline():
     assert gathered_task.inputs[0][0] == scattered_task_b.outputs[0][0]
 
 
-def test_task_to_runnable_script(): 
+def test_task_to_runnable(): 
     @task(input_types=(Int, Boolean))
     def my_task(a, b):
         print(a, b)
@@ -277,7 +277,7 @@ def test_task_to_runnable_script():
 
     with open("my_task.py", "r") as file:
         created = file.read()
-    with open("tests/test_task_to_runnable_script.py", "r") as file:
+    with open("tests/test_task_to_runnable.py", "r") as file:
         desired = file.read()
     
     assert created == desired
@@ -285,7 +285,7 @@ def test_task_to_runnable_script():
     os.remove("wdl_script.wdl")
 
 
-def test_temp2():
+def test_workflow_to_wdl():
     @task(
         input_types=(Int, Boolean),
         output_types=(Int, Condition, Boolean),
@@ -301,17 +301,27 @@ def test_temp2():
     def child_b(a, b):
         return a
     
-    @task(input_types=(Int,))
+    @task(input_types=(Int,), output_types=(Array[Int],))
     def joined_task(a):
+        return [a for _ in range(3)]
+    
+    @task(input_types=(Int,), output_types=(Int,))
+    def scattered_task(a):
+        return a
+
+    @task(input_types=(Array[Int],))
+    def gathered_task(a):
         print(a)
 
     manager = WorkflowManager()
     manager.add_workflow(Values(Int(1), Boolean(True)) |f| branch_task |b| Tasks(child_a, child_b) |j| joined_task)
+    manager.add_workflow(joined_task |s| scattered_task |g| gathered_task)
+
     manager.translate()
 
     with open("wdl_script.wdl", "r") as file:
         created = file.read()
-    with open("tests/test_workflow_to_wdl_script.wdl", "r") as file:
+    with open("tests/test_workflow_to_wdl.wdl", "r") as file:
         desired = file.read()
     
     assert created == desired
